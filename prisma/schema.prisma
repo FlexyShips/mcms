@@ -1,0 +1,745 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  previewFeatures = ["queryCompiler", "driverAdapters"]
+
+}
+
+model Tenant {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  email       String       @unique
+  phone       String?
+  status      TenantStatus @default(TRIAL)
+  trialEndsAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  subscription     Subscription?
+  settings         TenantSettings?
+  users            User[]
+  vessels          Vessel[]
+  crewMembers      CrewMember[]
+  certificates     Certificate[]
+  documents        Document[]
+  renewalItems     RenewalItem[]
+  apiKeys          ApiKey[]
+  webhooks         WebhookEndpoint[]
+  notificationLogs NotificationLog[]
+  aiInteractions   AiInteraction[]
+
+  @@index([status])
+}
+
+enum TenantStatus {
+  PENDING
+  WAITLIST
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+model Subscription {
+  id                 String             @id @default(cuid())
+  tenantId           String             @unique
+  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planId             String
+  plan               Plan               @relation(fields: [planId], references: [id])
+  status             SubscriptionStatus @default(PENDING)
+  billingCycle       BillingCycle       @default(MONTHLY)
+  amount             Decimal            @db.Decimal(10, 2)
+  currency           String             @default("NGN")
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean            @default(false)
+  cancelReason       String?
+  paymentReference   String?
+  createdAt          DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  payments           Payment[]
+}
+
+
+
+
+model Plan {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  description   String?
+  billingCycle  BillingCycle @default(MONTHLY)
+  amountKobo    Int
+  currency      String   @default("NGN")
+  gatewayPlanId String?
+  moduleFleetDashboard   Boolean @default(true)
+  moduleVesselManagement Boolean @default(true)
+  moduleCrewManagement   Boolean @default(true)
+  moduleExcelMigration   Boolean @default(true)
+  moduleDocumentRepository Boolean @default(true)
+  moduleReporting          Boolean @default(true)
+  moduleRenewalWorkflow    Boolean @default(true)
+  moduleNotifications      Boolean @default(true)
+  moduleAiFeatures         Boolean @default(false)
+  moduleIntegrations       Boolean @default(false)
+  vesselLimit      Int     @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  subscriptions  Subscription[]
+  pendingSignups PendingSignup[]
+
+  @@index([name])
+  @@index([billingCycle])
+}
+
+enum SubscriptionPlan {
+  STARTER
+  GROWTH
+  ENTERPRISE
+  TRIAL
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUALLY
+  QUARTERLY
+  BIANNUALLY
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  amount         Decimal       @db.Decimal(10, 2)
+  currency       String
+  reference      String        @unique
+  provider       String
+  status         PaymentStatus
+  paidAt         DateTime?
+  metadata       Json?
+  emailToken     String?
+  subscriptionCode     String?
+  createdAt      DateTime      @default(now())
+  }
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+model Waitlist {
+  id          String         @id @default(cuid())
+  email       String         @unique
+  companyName String
+  phone       String?
+  fleetSize   Int?
+  notes       String?
+  referral    String?
+  status      WaitlistStatus @default(PENDING)
+  invitedAt   DateTime?
+  createdAt   DateTime       @default(now())
+
+  @@index([status])
+}
+
+enum WaitlistStatus {
+  PENDING
+  INVITED
+  CONVERTED
+  REJECTED
+}
+
+model PendingSignup {
+  id String @id @default(cuid())
+
+  fullName     String
+  email        String @unique
+  passwordHash String
+  companyName  String
+  slug         String @unique
+  reference    String @unique
+
+  planId       String?
+  plan         Plan?  @relation(fields: [planId], references: [id])
+  cycle        BillingCycle?
+  status       SignupStatus @default(PENDING)
+  tenantId     String?
+  expiresAt DateTime
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([status, expiresAt])
+  @@index([slug])
+  @@index([reference])
+}
+
+enum SignupStatus {
+  PENDING
+  AWAITING_PAYMENT
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+model SignupToken {
+  id        String   @id @default(cuid())
+  signupId  String
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([signupId])
+  @@index([expiresAt])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         UserRole
+  isOwner      Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]
+  assignedVessels Vessel[]       @relation("VesselSuperintendent")
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([role])
+}
+
+enum UserRole {
+  ADMIN
+  FLEET_MANAGER
+  MARINE_SUPERINTENDENT
+  HR_MANAGER
+  CREW_MEMBER
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String    @unique
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@index([userId])
+}
+
+model SuperAdmin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  auditLogs SuperAdminAuditLog[]
+}
+
+model Vessel {
+  id                       String       @id @default(cuid())
+  tenantId                 String
+  tenant                   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name                     String
+  imoNumber                String?
+  vesselType               String
+  flagState                String
+  grossTonnage             Decimal?     @db.Decimal(10, 2)
+  yearBuilt                Int?
+  status                   VesselStatus @default(ACTIVE)
+  assignedSuperintendentId String?
+  assignedSuperintendent   User?        @relation("VesselSuperintendent", fields: [assignedSuperintendentId], references: [id])
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+
+  certificates    Certificate[]
+  crewAssignments VesselCrewAssignment[]
+  renewalItems    RenewalItem[]
+
+  @@index([tenantId])
+  @@index([assignedSuperintendentId])
+  @@index([status])
+}
+
+enum VesselStatus {
+  ACTIVE
+  INACTIVE
+  UNDER_REPAIR
+  DECOMMISSIONED
+}
+
+model Certificate {
+  id               String      @id @default(cuid())
+  tenantId         String
+  vesselId         String?
+  crewMemberId     String?
+  tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vessel           Vessel?     @relation(fields: [vesselId], references: [id], onDelete: SetNull)
+  crewMember       CrewMember? @relation(fields: [crewMemberId], references: [id], onDelete: SetNull)
+  name             String
+  category         CertCategory
+  issuingAuthority String
+  issuedAt         DateTime
+  expiresAt        DateTime
+  fileUrl          String?
+  fileKey          String?
+  status           CertStatus  @default(VALID)
+  notes            String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  renewalItem      RenewalItem?
+  documents        Document[]
+  notificationLogs NotificationLog[]
+
+  @@index([tenantId])
+  @@index([vesselId])
+  @@index([crewMemberId])
+  @@index([expiresAt])
+  @@index([status])
+}
+
+enum CertCategory {
+  STATUTORY
+  CLASSIFICATION
+  OPERATIONAL
+  COMPETENCY
+  MEDICAL
+  TRAVEL_DOCUMENT
+}
+
+enum CertStatus {
+  VALID
+  EXPIRING_SOON
+  EXPIRED
+  UNDER_RENEWAL
+  SUSPENDED
+}
+
+model Document {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  certificateId String?
+  certificate   Certificate? @relation(fields: [certificateId], references: [id], onDelete: SetNull)
+  name          String
+  fileKey       String
+  fileUrl       String?
+  mimeType      String?
+  sizeBytes     Int?
+  uploadedBy    String?
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  embeddings DocumentEmbedding[]
+
+  @@index([tenantId])
+  @@index([certificateId])
+}
+
+model DocumentEmbedding {
+  id         String                     @id @default(cuid())
+  tenantId   String
+  documentId String
+  document   Document                   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content    String                     @db.Text
+  embedding  Unsupported("vector(1536)")?
+  createdAt  DateTime                   @default(now())
+
+  @@index([tenantId])
+  @@index([documentId])
+}
+
+model CrewMember {
+  id             String    @id @default(cuid())
+  tenantId       String
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  firstName      String
+  lastName       String
+  rank           String
+  email          String?
+  phone          String?
+  nationality    String?
+  passportNumber String?
+  dateOfBirth    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  certificates Certificate[]
+  assignments  VesselCrewAssignment[]
+
+  @@index([tenantId])
+}
+
+model VesselCrewAssignment {
+  id           String     @id @default(cuid())
+  vesselId     String
+  crewMemberId String
+  vessel       Vessel     @relation(fields: [vesselId], references: [id], onDelete: Cascade)
+  crewMember   CrewMember @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+  startDate    DateTime
+  endDate      DateTime?
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+
+  @@unique([vesselId, crewMemberId, startDate])
+  @@index([crewMemberId])
+}
+
+model RenewalItem {
+  id            String           @id @default(cuid())
+  tenantId      String
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  certificateId String           @unique
+  certificate   Certificate      @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  vesselId      String?
+  vessel        Vessel?          @relation(fields: [vesselId], references: [id], onDelete: SetNull)
+  stage         RenewalStage     @default(EXPIRY_IDENTIFIED)
+  assignedTo    String?
+  dueDate       DateTime
+  notes         String?
+  history       RenewalHistory[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([tenantId])
+  @@index([vesselId])
+  @@index([stage])
+  @@index([dueDate])
+}
+
+model RenewalHistory {
+  id            String        @id @default(cuid())
+  renewalItemId String
+  renewalItem   RenewalItem   @relation(fields: [renewalItemId], references: [id], onDelete: Cascade)
+  fromStage     RenewalStage?
+  toStage       RenewalStage
+  changedBy     String
+  comment       String?
+  createdAt     DateTime      @default(now())
+
+  @@index([renewalItemId])
+}
+
+enum RenewalStage {
+  EXPIRY_IDENTIFIED
+  DOCUMENTS_REQUESTED
+  SUBMITTED_TO_AUTHORITY
+  UNDER_SURVEY
+  APPROVED
+  CLOSED
+}
+
+model NotificationLog {
+  id            String       @id @default(cuid())
+  tenantId      String
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  certificateId String?
+  certificate   Certificate? @relation(fields: [certificateId], references: [id], onDelete: SetNull)
+  channel       String
+  recipient     String
+  subject       String?
+  status        String
+  sentAt        DateTime?
+  errorMsg      String?
+  createdAt     DateTime     @default(now())
+
+  @@index([tenantId])
+  @@index([certificateId])
+  @@index([createdAt])
+}
+
+model AiInteraction {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId     String
+  feature    String
+  prompt     String   @db.Text
+  response   String   @db.Text
+  tokensUsed Int?
+  latencyMs  Int?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  entity    String
+  entityId  String
+  before    Json?
+  after     Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([createdAt])
+  @@index([userId])
+}
+
+model SuperAdminAuditLog {
+  id           String     @id @default(cuid())
+  superAdminId String
+  superAdmin   SuperAdmin @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
+  action       String
+  tenantId     String?
+  before       Json?
+  after        Json?
+  note         String?
+  createdAt    DateTime   @default(now())
+
+  @@index([superAdminId])
+  @@index([tenantId])
+  @@index([createdAt])
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  keyHash    String    @unique
+  keyPrefix  String
+  scopes     String[]
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  isActive   Boolean   @default(true)
+  createdBy  String
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([keyPrefix])
+}
+
+model WebhookEndpoint {
+  id         String            @id @default(cuid())
+  tenantId   String
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  url        String
+  secret     String
+  events     String[]
+  isActive   Boolean           @default(true)
+  createdAt  DateTime          @default(now())
+  deliveries WebhookDelivery[]
+
+  @@index([tenantId])
+}
+
+model WebhookDelivery {
+  id           String          @id @default(cuid())
+  endpointId   String
+  endpoint     WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  event        String
+  payload      Json
+  statusCode   Int?
+  responseBody String?
+  attemptCount Int             @default(0)
+  deliveredAt  DateTime?
+  nextRetryAt  DateTime?
+  status       DeliveryStatus  @default(PENDING)
+  createdAt    DateTime        @default(now())
+
+  @@index([endpointId])
+  @@index([status])
+  @@index([nextRetryAt])
+}
+
+enum DeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+  EXHAUSTED
+}
+
+model PlatformSettings {
+  id String @id @default(cuid())
+
+  starterMonthlyPriceKobo    Int @default(5000000)
+  starterAnnualPriceKobo     Int @default(48000000)
+  growthMonthlyPriceKobo     Int @default(15000000)
+  growthAnnualPriceKobo      Int @default(144000000)
+  enterpriseMonthlyPriceKobo Int @default(40000000)
+  enterpriseAnnualPriceKobo  Int @default(384000000)
+  trialMonthlyPriceKobo      Int @default(0)
+  trialAnnualPriceKobo       Int @default(0)
+
+  starterVesselLimit    Int @default(5)
+  growthVesselLimit     Int @default(20)
+  enterpriseVesselLimit Int @default(999999)
+  trialVesselLimit      Int @default(1)
+
+  defaultTrialDays       Int     @default(14)
+  trialRequiresCard      Boolean @default(false)
+  paymentGracePeriodDays Int     @default(7)
+
+  paystackEnabled    Boolean @default(true)
+  flutterwaveEnabled Boolean @default(true)
+  defaultCurrency    String  @default("NGN")
+
+  starterModuleFleetDashboard     Boolean @default(true)
+  starterModuleVesselManagement   Boolean @default(true)
+  starterModuleCrewManagement     Boolean @default(true)
+  starterModuleExcelMigration     Boolean @default(true)
+  starterModuleDocumentRepository Boolean @default(true)
+  starterModuleReporting          Boolean @default(true)
+  starterModuleRenewalWorkflow    Boolean @default(true)
+  starterModuleNotifications      Boolean @default(true)
+  starterModuleAiFeatures         Boolean @default(false)
+  starterModuleIntegrations       Boolean @default(false)
+
+  growthModuleAiFeatures   Boolean @default(true)
+  growthModuleIntegrations Boolean @default(true)
+
+  aiProvider                  String  @default("openai")
+  aiModel                     String  @default("gpt-4o")
+  aiEnabled                   Boolean @default(true)
+  aiDailyTokenLimitStarter    Int     @default(0)
+  aiDailyTokenLimitGrowth     Int     @default(200000)
+  aiDailyTokenLimitEnterprise Int     @default(1000000)
+
+  emailEnabled              Boolean  @default(true)
+  smsEnabled                Boolean  @default(true)
+  whatsappEnabled           Boolean  @default(false)
+  defaultAlertDays          Int[]    @default([60, 30, 14, 7])
+  starterSmsEnabled         Boolean  @default(false)
+  growthSmsEnabled          Boolean  @default(true)
+  enterpriseSmsEnabled      Boolean  @default(true)
+  enterpriseWhatsappEnabled Boolean  @default(true)
+
+  maxFileSizeMb            Int      @default(10)
+  allowedFileTypes         String[] @default(["pdf", "jpg", "jpeg", "png", "xlsx", "docx"])
+  starterStorageQuotaMb    Int      @default(5120)
+  growthStorageQuotaMb     Int      @default(51200)
+  enterpriseStorageQuotaMb Int      @default(0)
+
+  accessTokenTtlMinutes  Int @default(15)
+  refreshTokenTtlDays    Int @default(7)
+  maxLoginAttempts       Int @default(5)
+  lockoutDurationMinutes Int @default(30)
+  passwordMinLength      Int @default(8)
+  apiRateLimitPerMinute  Int @default(120)
+  authRateLimitPerWindow Int @default(10)
+
+  waitlistEnabled             Boolean @default(true)
+  waitlistInviteTokenTtlHours Int     @default(48)
+  registrationOpen            Boolean @default(false)
+
+  maintenanceMode         Boolean     @default(false)
+  maintenanceMessage      String?
+  platformAnnouncement    String?
+  platformAnnouncementType NoticeType?
+
+  lastModifiedBy String   @default("system")
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+}
+
+model TenantSettings {
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  moduleFleetDashboard     Boolean @default(true)
+  moduleVesselManagement   Boolean @default(true)
+  moduleCrewManagement     Boolean @default(true)
+  moduleExcelMigration     Boolean @default(true)
+  moduleDocumentRepository Boolean @default(true)
+  moduleReporting          Boolean @default(true)
+  moduleRenewalWorkflow    Boolean @default(true)
+  moduleNotifications      Boolean @default(true)
+  moduleAiFeatures         Boolean @default(false)
+  moduleIntegrations       Boolean @default(false)
+
+  vesselLimitOverride    Int?
+  storageQuotaMbOverride Int?
+
+  trialExtendedTo DateTime?
+  planOverride    SubscriptionPlan?
+  billingFrozen   Boolean           @default(false)
+
+  companyLogo    String?
+  companyAddress String?
+  companyWebsite String?
+  companyPhone   String?
+  timezone       String  @default("Africa/Lagos")
+  dateFormat     String  @default("DD/MM/YYYY")
+  language       String  @default("en")
+
+  emailNotificationsEnabled    Boolean  @default(true)
+  smsNotificationsEnabled      Boolean  @default(false)
+  whatsappNotificationsEnabled Boolean  @default(false)
+  alertDays                    Int[]    @default([60, 30, 14, 7])
+  digestMode                   Boolean  @default(false)
+  digestSendTime               String   @default("07:00")
+  additionalAlertEmails        String[] @default([])
+
+  autoRenewalTriggerDays    Int     @default(90)
+  expiringSoonThresholdDays Int     @default(30)
+  requireCertificateUpload  Boolean @default(false)
+
+  requireSuperintendentAssignment Boolean @default(false)
+
+  autoDeactivateOnContractEnd Boolean @default(true)
+  deactivationGraceDays       Int     @default(0)
+  allowCrewSelfUpdate         Boolean @default(true)
+
+  sessionTimeoutMinutes Int      @default(60)
+  enforcePasswordExpiry Boolean  @default(false)
+  passwordExpiryDays    Int      @default(90)
+  allowMultipleSessions Boolean  @default(true)
+  ipWhitelist           String[] @default([])
+
+  defaultReportFormat       String   @default("PDF")
+  autoScheduledReports      Boolean  @default(false)
+  scheduledReportFrequency  String?
+  scheduledReportDay        Int?
+  scheduledReportRecipients String[] @default([])
+
+  tenantNotice     String?
+  tenantNoticeType NoticeType?
+
+  lastModifiedBy String   @default("system")
+  lastModifiedAt DateTime @updatedAt
+  createdAt      DateTime @default(now())
+}
+
+enum NoticeType {
+  INFO
+  WARNING
+  DANGER
+}
