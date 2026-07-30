@@ -53,8 +53,8 @@ export function createApp() {
   app.use(`${API_PREFIX}/webhook`, webhookRouter);
 
   app.use(`${API_PREFIX}/health`, healthRouter);
-  app.use(resolveTenant);
   app.use(`${API_PREFIX}/waitlist`, waitlistRouter);
+  app.use(resolveTenant);
   app.use(`${API_PREFIX}/waitlist/admin`, adminWaitlistRouter);
   app.use(`${API_PREFIX}/auth`, authRouter);
   app.use(`${API_PREFIX}/subscriptions`, subscriptionRouter);
