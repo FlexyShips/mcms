@@ -1,0 +1,6 @@
+commit_msg_file="$1"
+
+if ! grep -vE '^[[:space:]]*(#|$)' "$commit_msg_file" | grep -q .; then
+  echo "Commit message cannot be empty."
+  exit 1
+fi
