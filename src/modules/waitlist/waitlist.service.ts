@@ -20,6 +20,7 @@ export async function createWaitlistEntry(input: {
   fleetSize?: number;
   notes?: string;
   referral?: string;
+  name: string;
 }) {
   const email = normalizeEmail(input.email);
 
@@ -30,7 +31,8 @@ export async function createWaitlistEntry(input: {
       phone: input.phone,
       fleetSize: input.fleetSize,
       notes: input.notes,
-      referral: input.referral
+      referral: input.referral,
+      name: input.name,
     },
     create: {
       email,
@@ -38,8 +40,9 @@ export async function createWaitlistEntry(input: {
       phone: input.phone,
       fleetSize: input.fleetSize,
       notes: input.notes,
-      referral: input.referral
-    }
+      referral: input.referral,
+      name: input.name,
+    },
   });
 }
 
@@ -56,16 +59,16 @@ export async function listWaitlistEntries(input: {
       where,
       orderBy: { createdAt: 'desc' },
       skip,
-      take: input.limit
+      take: input.limit,
     }),
-    prisma.waitlist.count({ where })
+    prisma.waitlist.count({ where }),
   ]);
 
   return {
     items,
     page: input.page,
     limit: input.limit,
-    total
+    total,
   };
 }
 
@@ -77,7 +80,11 @@ export async function inviteWaitlistEntry(id: string) {
   }
 
   if (entry.status === 'CONVERTED') {
-    throw new HttpError(409, 'Waitlist entry has already been converted', 'WAITLIST_ALREADY_CONVERTED');
+    throw new HttpError(
+      409,
+      'Waitlist entry has already been converted',
+      'WAITLIST_ALREADY_CONVERTED',
+    );
   }
 
   const token = makeInviteToken();
@@ -87,23 +94,23 @@ export async function inviteWaitlistEntry(id: string) {
     JSON.stringify({
       waitlistId: entry.id,
       email: entry.email,
-      companyName: entry.companyName
+      companyName: entry.companyName,
     }),
     'EX',
-    INVITE_TTL_SECONDS
+    INVITE_TTL_SECONDS,
   );
 
   const updated = await prisma.waitlist.update({
     where: { id },
     data: {
       status: 'INVITED',
-      invitedAt: new Date()
-    }
+      invitedAt: new Date(),
+    },
   });
 
   return {
     waitlist: updated,
     token,
-    expiresInSeconds: INVITE_TTL_SECONDS
+    expiresInSeconds: INVITE_TTL_SECONDS,
   };
 }

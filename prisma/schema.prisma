@@ -148,6 +148,7 @@ model Waitlist {
   fleetSize   Int?
   notes       String?
   referral    String?
+  name        String
   status      WaitlistStatus @default(PENDING)
   invitedAt   DateTime?
   createdAt   DateTime       @default(now())
