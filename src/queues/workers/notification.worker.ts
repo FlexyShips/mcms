@@ -1,57 +1,61 @@
-import { Worker, type Job } from "bullmq";
-import { env } from "../../config/env.js";
-import { logger } from "../../lib/logger.js";
-import { prisma } from "../../lib/prisma.js";
-import { getTenantSettings } from "../../lib/settings.js";
+import { Worker, type Job } from 'bullmq';
+import { env } from '../../config/env.js';
+import { logger } from '../../lib/logger.js';
+import { prisma } from '../../lib/prisma.js';
+import { getTenantSettings } from '../../lib/settings.js';
+import { logJobCompleted, logJobStarted } from '../job-logger.js';
 
 const connection = { url: env.REDIS_URL };
 
 const worker = new Worker(
-  "notification",
+  'notification',
   async (job: Job) => {
+    const startedAt = logJobStarted('notification', job);
     const { name } = job;
+    let result: Record<string, unknown>;
 
-    if (name === "scanner") {
+    if (name === 'scanner') {
       await scanExpiringCertificates();
-      return { ok: true };
-    }
-
-    if (name === "send.vessel.cert" || name === "send.crew.doc") {
-      const { tenantId, recipientId, certId, docId, daysRemaining } =
-        job.data as Record<string, unknown>;
-      const tenantSettings = await getTenantSettings(String(tenantId)).catch(
-        () => null,
-      );
+      result = { ok: true };
+    } else if (name === 'send.vessel.cert' || name === 'send.crew.doc') {
+      const { tenantId, recipientId, certId, docId, daysRemaining } = job.data as Record<
+        string,
+        unknown
+      >;
+      const tenantSettings = await getTenantSettings(String(tenantId)).catch(() => null);
 
       if (!tenantSettings?.moduleNotifications) {
-        return { skipped: true };
+        result = { skipped: true };
+      } else {
+        await prisma.notificationLog.create({
+          data: {
+            tenantId: String(tenantId),
+            recipient: String(recipientId),
+            channel: 'email',
+            subject:
+              name === 'send.vessel.cert'
+                ? 'Vessel certificate expiry alert'
+                : 'Crew document expiry alert',
+            status: 'DELIVERED',
+            sentAt: new Date(),
+            certificateId: certId ? String(certId) : undefined,
+          },
+        });
+
+        result = { delivered: true, daysRemaining };
       }
-
-      await prisma.notificationLog.create({
-        data: {
-          tenantId: String(tenantId),
-          recipient: String(recipientId),
-          channel: "email",
-          subject:
-            name === "send.vessel.cert"
-              ? "Vessel certificate expiry alert"
-              : "Crew document expiry alert",
-          status: "DELIVERED",
-          sentAt: new Date(),
-          certificateId: certId ? String(certId) : undefined,
-        },
-      });
-
-      return { delivered: true, daysRemaining };
+    } else {
+      result = { skipped: true };
     }
 
-    return { skipped: true };
+    logJobCompleted('notification', job, startedAt, result);
+    return result;
   },
   { connection, concurrency: 5 },
 );
 
 async function scanExpiringCertificates() {
-  const tenants = await prisma.tenant.findMany({ where: { status: "ACTIVE" } });
+  const tenants = await prisma.tenant.findMany({ where: { status: 'ACTIVE' } });
 
   for (const tenant of tenants) {
     const settings = await getTenantSettings(tenant.id);
@@ -70,7 +74,7 @@ async function scanExpiringCertificates() {
           tenantId: tenant.id,
           vesselId: { not: null },
           expiresAt: { gte: start, lte: end },
-          status: { not: "EXPIRED" },
+          status: { not: 'EXPIRED' },
         },
       });
 
@@ -78,10 +82,10 @@ async function scanExpiringCertificates() {
         await prisma.notificationLog.create({
           data: {
             tenantId: tenant.id,
-            channel: "email",
+            channel: 'email',
             recipient: tenant.id,
-            subject: "Certificate expiry scan",
-            status: "DELIVERED",
+            subject: 'Certificate expiry scan',
+            status: 'DELIVERED',
             sentAt: new Date(),
             certificateId: cert.id,
           },
@@ -93,7 +97,7 @@ async function scanExpiringCertificates() {
           tenantId: tenant.id,
           crewMemberId: { not: null },
           expiresAt: { gte: start, lte: end },
-          status: { not: "EXPIRED" },
+          status: { not: 'EXPIRED' },
         },
       });
 
@@ -101,10 +105,10 @@ async function scanExpiringCertificates() {
         await prisma.notificationLog.create({
           data: {
             tenantId: tenant.id,
-            channel: "email",
+            channel: 'email',
             recipient: tenant.id,
-            subject: "Crew document expiry scan",
-            status: "DELIVERED",
+            subject: 'Crew document expiry scan',
+            status: 'DELIVERED',
             sentAt: new Date(),
             certificateId: doc.id,
           },
@@ -114,23 +118,21 @@ async function scanExpiringCertificates() {
   }
 }
 
-worker.on("ready", () => {
-  logger.info("Notification BullMQ worker is ready");
+worker.on('ready', () => {
+  logger.info('Notification BullMQ worker is ready');
 });
 
-worker.on("failed", (job, err) => {
-  logger.error({ err, jobName: job?.name }, "Notification worker failed");
+worker.on('failed', (job, err) => {
+  logger.error({ err, jobName: job?.name }, 'Notification worker failed');
 });
 
-export async function checkNotificationQueueConnection(): Promise<
-  "connected" | "disconnected"
-> {
+export async function checkNotificationQueueConnection(): Promise<'connected' | 'disconnected'> {
   try {
     await worker.waitUntilReady();
 
-    return "connected";
+    return 'connected';
   } catch (error) {
-    return "disconnected";
+    return 'disconnected';
   }
 }
 

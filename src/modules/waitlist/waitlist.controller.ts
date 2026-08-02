@@ -11,10 +11,16 @@ export async function list(req: Request, res: Response) {
   const result = await waitlistService.listWaitlistEntries({
     status: req.query.status as 'PENDING' | 'INVITED' | 'CONVERTED' | 'REJECTED' | undefined,
     page: Number(req.query.page),
-    limit: Number(req.query.limit)
+    limit: Number(req.query.limit),
   });
 
   res.json(result);
+}
+
+export async function notifyLaunch(_req: Request, res: Response) {
+  const result = await waitlistService.queuePendingWaitlistLaunchAnnouncement();
+
+  res.status(202).json(result);
 }
 
 export async function invite(req: Request, res: Response) {
