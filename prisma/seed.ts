@@ -1,13 +1,13 @@
-import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaPg } from '@prisma/adapter-pg';
 import {
   BillingCycle,
   PrismaClient,
   SubscriptionPlan,
   SubscriptionStatus,
   UserRole,
-} from "../src/generated/prisma/client.js";
-import bcrypt from "bcryptjs";
-import { env } from "../src/config/env.js";
+} from '../src/generated/prisma/client.js';
+import bcrypt from 'bcryptjs';
+import { env } from '../src/config/env.js';
 
 const adapter = new PrismaPg({ connectionString: env.DATABASE_URL });
 
@@ -16,29 +16,29 @@ const prisma = new PrismaClient({
 });
 
 async function main() {
-  const passwordHash = await bcrypt.hash("Password123!", 12);
-  const superAdminPasswordHash = await bcrypt.hash("SuperAdmin123!", 12);
+  const passwordHash = await bcrypt.hash('Password123!', 12);
+  const superAdminPasswordHash = await bcrypt.hash('SuperAdmin123!', 12);
   const now = new Date();
   const trialEndsAt = new Date(now);
   trialEndsAt.setDate(trialEndsAt.getDate() + 14);
 
   await prisma.platformSettings.upsert({
-    where: { id: "platform-defaults" },
+    where: { id: 'platform-defaults' },
     update: {},
     create: {
-      id: "platform-defaults",
-      lastModifiedBy: "seed",
+      id: 'platform-defaults',
+      lastModifiedBy: 'seed',
     },
   });
 
   await prisma.superAdmin.upsert({
-    where: { email: "platform@mcms.example" },
+    where: { email: 'admin@flexyships.com' },
     update: {},
     create: {
-      email: "platform@mcms.example",
+      email: 'admin@flexyships.com',
       passwordHash: superAdminPasswordHash,
-      firstName: "Platform",
-      lastName: "Admin",
+      firstName: 'Platform',
+      lastName: 'Admin',
     },
   });
 

@@ -1,16 +1,10 @@
-import { randomBytes } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { prisma } from '../../lib/prisma.js';
-import { redis } from '../../lib/redis.js';
+import { emailQueue } from '../../queues/queue.js';
 import { HttpError } from '../../utils/httpError.js';
-
-const INVITE_TTL_SECONDS = 48 * 60 * 60;
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
-}
-
-function makeInviteToken(): string {
-  return randomBytes(32).toString('base64url');
 }
 
 export async function createWaitlistEntry(input: {
@@ -24,7 +18,7 @@ export async function createWaitlistEntry(input: {
 }) {
   const email = normalizeEmail(input.email);
 
-  return prisma.waitlist.upsert({
+  const data = await prisma.waitlist.upsert({
     where: { email },
     update: {
       companyName: input.companyName,
@@ -44,6 +38,23 @@ export async function createWaitlistEntry(input: {
       name: input.name,
     },
   });
+
+  await emailQueue.add(
+    'waitlist.acknowledgement',
+    {
+      email: data.email,
+      name: data.name,
+      companyName: data.companyName,
+    },
+    {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5_000 },
+      removeOnComplete: { count: 100 },
+      removeOnFail: { count: 100 },
+    },
+  );
+
+  return data;
 }
 
 export async function listWaitlistEntries(input: {
@@ -72,6 +83,44 @@ export async function listWaitlistEntries(input: {
   };
 }
 
+export async function queuePendingWaitlistLaunchAnnouncement() {
+  const entries = await prisma.waitlist.findMany({
+    where: { status: 'PENDING' },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      companyName: true,
+    },
+  });
+
+  if (entries.length === 0) {
+    return { campaignId: null, queued: 0 };
+  }
+
+  const campaignId = randomUUID();
+  const jobs = await emailQueue.addBulk(
+    entries.map((entry) => ({
+      name: 'waitlist.product-launch',
+      data: {
+        campaignId,
+        email: entry.email,
+        name: entry.name,
+        companyName: entry.companyName,
+      },
+      opts: {
+        jobId: `waitlist-product-launch-${campaignId}-${entry.id}`,
+        attempts: 3,
+        backoff: { type: 'exponential' as const, delay: 5_000 },
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 100 },
+      },
+    })),
+  );
+
+  return { campaignId, queued: jobs.length };
+}
+
 export async function inviteWaitlistEntry(id: string) {
   const entry = await prisma.waitlist.findUnique({ where: { id } });
 
@@ -87,30 +136,29 @@ export async function inviteWaitlistEntry(id: string) {
     );
   }
 
-  const token = makeInviteToken();
-
-  await redis.set(
-    `onboarding:invite:${token}`,
-    JSON.stringify({
-      waitlistId: entry.id,
-      email: entry.email,
-      companyName: entry.companyName,
-    }),
-    'EX',
-    INVITE_TTL_SECONDS,
+  const campaignId = randomUUID();
+  await emailQueue.addBulk(
+    [entry].map((entry) => ({
+      name: 'waitlist.product-launch',
+      data: {
+        campaignId,
+        email: entry.email,
+        name: entry.name,
+        companyName: entry.companyName,
+      },
+      opts: {
+        jobId: `waitlist-product-launch-${campaignId}-${entry.id}`,
+        attempts: 3,
+        backoff: { type: 'exponential' as const, delay: 5_000 },
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 100 },
+      },
+    })),
   );
 
-  const updated = await prisma.waitlist.update({
-    where: { id },
-    data: {
-      status: 'INVITED',
-      invitedAt: new Date(),
-    },
-  });
-
   return {
-    waitlist: updated,
-    token,
-    expiresInSeconds: INVITE_TTL_SECONDS,
+    waitlist: entry,
+    token: '',
+    expiresInSeconds: 0,
   };
 }

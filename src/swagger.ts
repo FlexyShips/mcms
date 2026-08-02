@@ -186,6 +186,35 @@ export const swaggerDocument = {
         },
       },
     },
+    '/waitlist/admin/launch-announcement': {
+      post: {
+        summary: 'Queue product launch announcement for pending waitlist users',
+        description:
+          'Queues an individualized product launch email for every waitlist entry whose status is PENDING.',
+        tags: ['Waitlist'],
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '202': {
+            description: 'Launch announcement emails queued',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['campaignId', 'queued'],
+                  properties: {
+                    campaignId: { type: 'string', nullable: true },
+                    queued: { type: 'integer', example: 42 },
+                  },
+                },
+              },
+            },
+          },
+          '401': {
+            description: 'Super admin authentication is required',
+          },
+        },
+      },
+    },
     '/waitlist/admin/{id}/invite': {
       patch: {
         summary: 'Invite waitlist entry',

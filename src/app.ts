@@ -3,6 +3,7 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import { API_PREFIX } from './config/constants.js';
 import { logger } from './lib/logger.js';
 import { errorHandler } from './middlewares/error.middleware.js';
@@ -38,6 +39,14 @@ export function createApp() {
   app.use(compression());
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true }));
+  app.use(
+    '/images',
+    (_req, res, next) => {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      next();
+    },
+    express.static(path.resolve(process.cwd(), 'src/public/images')),
+  );
   app.use(
     pinoHttp({
       logger,

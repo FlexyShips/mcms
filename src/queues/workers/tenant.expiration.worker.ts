@@ -1,26 +1,29 @@
-import { Worker, type Job } from "bullmq";
-import { env } from "../../config/env.js";
-import { logger } from "../../lib/logger.js";
-import { prisma } from "../../lib/prisma.js";
-import {
-  TenantStatus,
-  SubscriptionStatus,
-} from "../../generated/prisma/client.js";
+import { Worker, type Job } from 'bullmq';
+import { env } from '../../config/env.js';
+import { logger } from '../../lib/logger.js';
+import { prisma } from '../../lib/prisma.js';
+import { TenantStatus, SubscriptionStatus } from '../../generated/prisma/client.js';
+import { logJobCompleted, logJobStarted } from '../job-logger.js';
 const connection = { url: env.REDIS_URL };
 const BATCH_SIZE = 100;
 
 const worker = new Worker(
-  "tenantExpiration",
+  'tenantExpiration',
   async (job: Job) => {
+    const startedAt = logJobStarted('tenantExpiration', job);
     const { name } = job;
+    let result: Record<string, unknown>;
 
-    if (name === "expire-tenants") {
-      await processTrialExpirations(new Date());
-      await processSubscriptionExpirations(new Date());
-      return { expired: true };
+    if (name === 'expire-tenants') {
+      const trialResult = await processTrialExpirations(new Date());
+      const subscriptionResult = await processSubscriptionExpirations(new Date());
+      result = { expired: true, ...trialResult, ...subscriptionResult };
+    } else {
+      result = { skipped: true };
     }
 
-    return { skipped: true };
+    logJobCompleted('tenantExpiration', job, startedAt, result);
+    return result;
   },
   { connection, concurrency: 1 },
 );
@@ -50,7 +53,7 @@ async function processTrialExpirations(now: Date) {
       },
       take: BATCH_SIZE,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-      orderBy: { id: "asc" },
+      orderBy: { id: 'asc' },
     });
 
     if (candidates.length === 0) break;
@@ -72,10 +75,10 @@ async function processTrialExpirations(now: Date) {
         await tx.notificationLog.create({
           data: {
             tenantId: tenant.id,
-            channel: "EMAIL",
+            channel: 'EMAIL',
             recipient: tenant.email,
-            subject: "Your trial has ended",
-            status: "PENDING", // actual send handled by notification worker
+            subject: 'Your trial has ended',
+            status: 'PENDING', // actual send handled by notification worker
           },
         });
 
@@ -129,7 +132,7 @@ async function processSubscriptionExpirations(now: Date) {
       },
       take: BATCH_SIZE,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-      orderBy: { id: "asc" },
+      orderBy: { id: 'asc' },
     });
 
     if (candidates.length === 0) break;
@@ -140,27 +143,16 @@ async function processSubscriptionExpirations(now: Date) {
 
       // Case A: user explicitly opted not to renew — cancel immediately at period end.
       if (sub.cancelAtPeriodEnd) {
-        const didCancel = await cancelSubscriptionAndTenant(
-          sub.id,
-          sub.tenantId,
-          "requested",
-        );
+        const didCancel = await cancelSubscriptionAndTenant(sub.id, sub.tenantId, 'requested');
         if (didCancel) cancelledAtPeriodEnd++;
         continue;
       }
 
       // Case B: grace period has fully elapsed with no successful renewal payment — cancel.
       if (now >= graceDeadline) {
-        const paid = await hasSuccessfulRenewalPayment(
-          sub.id,
-          sub.currentPeriodEnd,
-        );
+        const paid = await hasSuccessfulRenewalPayment(sub.id, sub.currentPeriodEnd);
         if (!paid) {
-          const didCancel = await cancelSubscriptionAndTenant(
-            sub.id,
-            sub.tenantId,
-            "non_payment",
-          );
+          const didCancel = await cancelSubscriptionAndTenant(sub.id, sub.tenantId, 'non_payment');
           if (didCancel) cancelledAfterGrace++;
         }
         continue;
@@ -177,10 +169,10 @@ async function processSubscriptionExpirations(now: Date) {
           await prisma.notificationLog.create({
             data: {
               tenantId: sub.tenantId,
-              channel: "EMAIL",
+              channel: 'EMAIL',
               recipient: sub.tenant.email,
-              subject: "Payment past due",
-              status: "PENDING",
+              subject: 'Payment past due',
+              status: 'PENDING',
             },
           });
         }
@@ -197,14 +189,11 @@ async function processSubscriptionExpirations(now: Date) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function hasSuccessfulRenewalPayment(
-  subscriptionId: string,
-  periodEnd: Date,
-) {
+async function hasSuccessfulRenewalPayment(subscriptionId: string, periodEnd: Date) {
   const payment = await prisma.payment.findFirst({
     where: {
       subscriptionId,
-      status: "SUCCESS",
+      status: 'SUCCESS',
       paidAt: { gte: periodEnd },
     },
     select: { id: true },
@@ -215,7 +204,7 @@ async function hasSuccessfulRenewalPayment(
 async function cancelSubscriptionAndTenant(
   subscriptionId: string,
   tenantId: string,
-  reason: "requested" | "non_payment",
+  reason: 'requested' | 'non_payment',
 ) {
   return prisma.$transaction(async (tx) => {
     const updatedSub = await tx.subscription.updateMany({
@@ -239,10 +228,7 @@ async function cancelSubscriptionAndTenant(
         status: { in: [TenantStatus.ACTIVE, TenantStatus.TRIAL] },
       },
       data: {
-        status:
-          reason === "requested"
-            ? TenantStatus.CANCELLED
-            : TenantStatus.SUSPENDED,
+        status: reason === 'requested' ? TenantStatus.CANCELLED : TenantStatus.SUSPENDED,
       },
     });
 
@@ -250,14 +236,10 @@ async function cancelSubscriptionAndTenant(
   });
 }
 
-worker.on("failed", (job, err) => {
-  logger.error({ jobId: job?.id, err }, "Tenant expiry sweep failed");
+worker.on('ready', () => {
+  logger.info('Tenant expiration BullMQ worker is ready');
 });
 
-worker.on("ready", () => {
-  logger.info("Tenant expiration BullMQ worker is ready");
-});
-
-worker.on("failed", (job, err) => {
-  logger.error({ err, jobName: job?.name }, "Tenant expiration worker failed");
+worker.on('failed', (job, err) => {
+  logger.error({ err, jobName: job?.name }, 'Tenant expiration worker failed');
 });
