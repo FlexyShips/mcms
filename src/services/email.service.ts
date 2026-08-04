@@ -82,3 +82,59 @@ export async function sendWaitlistLaunchAnnouncement(input: {
 
   logger.info({ email: input.email }, 'Waitlist launch announcement sent');
 }
+
+export async function sendTenantWelcome(input: {
+  email: string;
+  fullName: string;
+  companyName: string;
+  url: string;
+}): Promise<void> {
+  const from = env.SES_FROM_EMAIL || env.SMTP_USER;
+
+  if (!from) {
+    throw new Error('SES_FROM_EMAIL or SMTP_USER must be configured');
+  }
+
+  const fullName = htmlEscape(input.fullName);
+  const companyName = htmlEscape(input.companyName);
+  const url = htmlEscape(input.url);
+  const content = `<p>Hi ${fullName},</p><p>Welcome to FlexyShips. Your workspace for <strong>${companyName}</strong> is ready.</p><p><a href="${url}" style="display: inline-block; background: #0f2a43; color: #ffffff; padding: 12px 20px; border-radius: 4px; text-decoration: none;">Open your workspace</a></p>`;
+
+  await getTransporter().sendMail({
+    from,
+    to: input.email,
+    subject: 'Welcome to FlexyShips',
+    text: `Hi ${input.fullName},\n\nWelcome to FlexyShips. Your workspace for ${input.companyName} is ready. Open it here: ${input.url}\n\nThe FlexyShips team`,
+    html: emailTemplateWrapper({ title: 'Welcome to FlexyShips', content }),
+  });
+
+  logger.info({ email: input.email }, 'Tenant welcome email sent');
+}
+
+export async function sendSignupPayment(input: {
+  email: string;
+  fullName: string;
+  companyName: string;
+  checkoutUrl: string;
+}): Promise<void> {
+  const from = env.SES_FROM_EMAIL || env.SMTP_USER;
+
+  if (!from) {
+    throw new Error('SES_FROM_EMAIL or SMTP_USER must be configured');
+  }
+
+  const fullName = htmlEscape(input.fullName);
+  const companyName = htmlEscape(input.companyName);
+  const checkoutUrl = htmlEscape(input.checkoutUrl);
+  const content = `<p>Hi ${fullName},</p><p>Thanks for signing up for FlexyShips for <strong>${companyName}</strong>.</p><p>Complete your payment to activate your workspace:</p><p><a href="${checkoutUrl}" style="display: inline-block; background: #0f2a43; color: #ffffff; padding: 12px 20px; border-radius: 4px; text-decoration: none;">Complete payment</a></p>`;
+
+  await getTransporter().sendMail({
+    from,
+    to: input.email,
+    subject: 'Complete your FlexyShips signup',
+    text: `Hi ${input.fullName},\n\nThanks for signing up for FlexyShips for ${input.companyName}. Complete your payment to activate your workspace: ${input.checkoutUrl}\n\nThe FlexyShips team`,
+    html: emailTemplateWrapper({ title: 'Complete your FlexyShips signup', content }),
+  });
+
+  logger.info({ email: input.email }, 'Signup payment email sent');
+}

@@ -1,8 +1,8 @@
-import bcrypt from "bcryptjs";
-import { randomBytes } from "node:crypto";
-import { prisma } from "../../lib/prisma.js";
-import { emailQueue } from "../../queues/queue.js";
-import { HttpError } from "../../utils/httpError.js";
+import bcrypt from 'bcryptjs';
+import { randomBytes } from 'node:crypto';
+import { prisma } from '../../lib/prisma.js';
+import { emailQueue } from '../../queues/queue.js';
+import { HttpError } from '../../utils/httpError.js';
 import {
   BillingCycle,
   PaymentStatus,
@@ -11,22 +11,22 @@ import {
   SubscriptionStatus,
   TenantStatus,
   UserRole,
-} from "../../generated/prisma/client.js";
-import { paymentService } from "../payment/payment.service.js";
-import { getEndPeriod } from "../../utils/periodEnds.js";
+} from '../../generated/prisma/client.js';
+import { paymentService } from '../payment/payment.service.js';
+import { getEndPeriod } from '../../utils/periodEnds.js';
 
 const SIGNUP_EXPIRATION_HOURS = 24;
 
 const RESERVED_SLUGS = new Set([
-  "www",
-  "api",
-  "admin",
-  "app",
-  "mail",
-  "mcdms",
-  "ene",
-  "staging",
-  "localhost",
+  'www',
+  'api',
+  'admin',
+  'app',
+  'mail',
+  'mcdms',
+  'ene',
+  'staging',
+  'localhost',
 ]);
 
 function normalizeEmail(email: string): string {
@@ -87,32 +87,29 @@ export async function createSignup(input: {
   const email = normalizeEmail(input.email);
   const slug = input.slug.toLowerCase();
 
-  const existingUser = await prisma.user.findFirst({
-    where: { email },
-  });
+  const existingUser = await prisma.user.findFirst({ where: { email } });
 
   if (existingUser) {
-    throw new HttpError(409, "Email is already registered", "EMAIL_EXISTS");
+    throw new HttpError(409, 'Email is already registered', 'EMAIL_EXISTS');
   }
 
   const slugCheck = await checkSlugAvailability(slug);
   if (!slugCheck.available) {
-    throw new HttpError(409, "Slug is already taken", "SLUG_TAKEN");
+    throw new HttpError(409, 'Slug is already taken', 'SLUG_TAKEN');
   }
+  await prisma.pendingSignup.delete({
+    where: { email, status: { in: [SignupStatus.PENDING, SignupStatus.AWAITING_PAYMENT] } },
+  });
 
   const passwordHash = await bcrypt.hash(input.password, 12);
-  const reference = `signup_${randomBytes(16).toString("hex")}`;
+  const reference = `signup_${randomBytes(16).toString('hex')}`;
   const expiresAt = addHours(new Date(), SIGNUP_EXPIRATION_HOURS);
   const plan = await prisma.plan.findFirst({
     where: { id: input.planId },
   });
 
   if (!plan) {
-    throw new HttpError(
-      400,
-      "Invalid subscription plan",
-      "INVALID_SUBSCRIPTION_PLAN",
-    );
+    throw new HttpError(400, 'Invalid subscription plan', 'INVALID_SUBSCRIPTION_PLAN');
   }
   const signup = await prisma.pendingSignup.create({
     data: {
@@ -122,7 +119,7 @@ export async function createSignup(input: {
       companyName: input.companyName,
       slug,
       reference,
-      planId: plan.id,
+      plan: { connect: { id: plan.id } },
       cycle: plan.billingCycle,
       status: SignupStatus.PENDING,
       expiresAt,
@@ -144,7 +141,7 @@ export async function createSignup(input: {
             create: {
               moduleAiFeatures: false,
               moduleIntegrations: false,
-              lastModifiedBy: "signup",
+              lastModifiedBy: 'signup',
             },
           },
           subscription: {
@@ -152,8 +149,8 @@ export async function createSignup(input: {
               planId: plan.id,
               status: SubscriptionStatus.ACTIVE,
               billingCycle: BillingCycle.MONTHLY,
-              amount: "0",
-              currency: "NGN",
+              amount: '0',
+              currency: 'NGN',
               currentPeriodStart: new Date(),
               currentPeriodEnd: trialEndsAt,
             },
@@ -166,8 +163,8 @@ export async function createSignup(input: {
           tenantId: tenant.id,
           email,
           passwordHash,
-          firstName: input.fullName.split(" ")[0] ?? input.fullName,
-          lastName: input.fullName.split(" ").slice(1).join(" ") ?? "",
+          firstName: input.fullName.split(' ')[0] ?? input.fullName,
+          lastName: input.fullName.split(' ').slice(1).join(' ') ?? '',
           role: UserRole.ADMIN,
           isOwner: true,
         },
@@ -179,11 +176,11 @@ export async function createSignup(input: {
       });
     });
 
-    await emailQueue.add("welcome.tenant", {
+    await emailQueue.add('welcome.tenant', {
       tenantId: signup.id,
       email,
       fullName: input.fullName,
-      slug,
+      url: `https://${slug}.mcdms.com/login?autologin=true`,
       companyName: input.companyName,
     });
 
@@ -192,16 +189,15 @@ export async function createSignup(input: {
 
   const checkoutUrlResult = await paymentService.createCheckoutSession({
     email,
-    planCode: plan.gatewayPlanId!,
     amountKobo: plan.amountKobo,
     plan: plan.name,
     billingCycle: plan.billingCycle,
     signupReference: reference,
     companyName: input.companyName,
     slug: input.slug,
-    provider: "paystack",
+    provider: 'paystack',
     fullName: input.fullName,
-    type: "signup",
+    type: 'signup',
   });
 
   await prisma.pendingSignup.update({
@@ -209,10 +205,18 @@ export async function createSignup(input: {
     data: { status: SignupStatus.AWAITING_PAYMENT },
   });
 
+  await emailQueue.add('signup.payment', {
+    tenantId: signup.id,
+    email,
+    fullName: input.fullName,
+    checkoutUrl: checkoutUrlResult.checkoutUrl,
+    companyName: input.companyName,
+  });
+
   return {
     reference,
     checkoutUrl: checkoutUrlResult.checkoutUrl,
-    provider: "paystack",
+    provider: 'paystack',
   };
 }
 
@@ -228,7 +232,7 @@ export async function getSignupStatus(reference: string): Promise<{
   });
 
   if (!signup) {
-    throw new HttpError(404, "Signup not found", "SIGNUP_NOT_FOUND");
+    throw new HttpError(404, 'Signup not found', 'SIGNUP_NOT_FOUND');
   }
 
   if (signup.expiresAt < new Date() && signup.status !== SignupStatus.ACTIVE) {
@@ -236,7 +240,7 @@ export async function getSignupStatus(reference: string): Promise<{
       where: { id: signup.id },
       data: { status: SignupStatus.EXPIRED },
     });
-    throw new HttpError(410, "Signup has expired", "SIGNUP_EXPIRED");
+    throw new HttpError(410, 'Signup has expired', 'SIGNUP_EXPIRED');
   }
 
   return {
@@ -253,8 +257,7 @@ export async function completeOnboarding(paymentMetadata: {
   signupReference: string;
   paymentReference: string;
   status: TenantStatus;
-  subscriptionCode: string;
-  emailToken: string;
+  customerCode?: string;
 }): Promise<{ tenantId: string; userId: string; slug: string }> {
   const signup = await prisma.pendingSignup.findFirst({
     where: { reference: paymentMetadata.signupReference },
@@ -262,7 +265,7 @@ export async function completeOnboarding(paymentMetadata: {
   });
 
   if (!signup) {
-    throw new HttpError(404, "Signup not found", "SIGNUP_NOT_FOUND");
+    throw new HttpError(404, 'Signup not found', 'SIGNUP_NOT_FOUND');
   }
 
   // Idempotency: webhook retries should not re-run this. If it's already
@@ -282,23 +285,15 @@ export async function completeOnboarding(paymentMetadata: {
   }
 
   if (signup.status !== SignupStatus.AWAITING_PAYMENT) {
-    throw new HttpError(
-      409,
-      "Signup is not awaiting payment",
-      "SIGNUP_NOT_AWAITING_PAYMENT",
-    );
+    throw new HttpError(409, 'Signup is not awaiting payment', 'SIGNUP_NOT_AWAITING_PAYMENT');
   }
 
   if (!signup.plan?.id) {
-    throw new HttpError(
-      400,
-      "Signup has no plan attached",
-      "SIGNUP_MISSING_PLAN",
-    );
+    throw new HttpError(400, 'Signup has no plan attached', 'SIGNUP_MISSING_PLAN');
   }
 
   if (signup.expiresAt < new Date()) {
-    throw new HttpError(410, "Signup has expired", "SIGNUP_EXPIRED");
+    throw new HttpError(410, 'Signup has expired', 'SIGNUP_EXPIRED');
   }
 
   const now = new Date();
@@ -316,7 +311,7 @@ export async function completeOnboarding(paymentMetadata: {
           create: {
             moduleAiFeatures: signup.plan!.name !== SubscriptionPlan.STARTER,
             moduleIntegrations: signup.plan!.name !== SubscriptionPlan.STARTER,
-            lastModifiedBy: "signup",
+            lastModifiedBy: 'signup',
           },
         },
       },
@@ -327,7 +322,7 @@ export async function completeOnboarding(paymentMetadata: {
         status: SubscriptionStatus.ACTIVE,
         billingCycle,
         amount: String(signup.plan!.amountKobo),
-        currency: "NGN",
+        currency: 'NGN',
         currentPeriodStart: now,
         currentPeriodEnd: endsAt,
         paymentReference: paymentMetadata.paymentReference,
@@ -341,11 +336,16 @@ export async function completeOnboarding(paymentMetadata: {
         tenantId: createdTenant.id,
         email: signup.email,
         passwordHash: signup.passwordHash,
-        firstName: signup.fullName.split(" ")[0] ?? signup.fullName,
-        lastName: signup.fullName.split(" ").slice(1).join(" ") ?? "",
+        firstName: signup.fullName.split(' ')[0] ?? signup.fullName,
+        lastName: signup.fullName.split(' ').slice(1).join(' ') ?? '',
         role: UserRole.ADMIN,
         isOwner: true,
       },
+    });
+
+    const subscriptionCode = await paymentService.createCustomerSubscription({
+      customerCode: paymentMetadata.customerCode!,
+      planCode: signup.plan!.gatewayPlanId!,
     });
 
     await tx.payment.create({
@@ -360,9 +360,9 @@ export async function completeOnboarding(paymentMetadata: {
           },
         },
         status: PaymentStatus.SUCCESS,
-        provider: "paystack",
-        emailToken: paymentMetadata.emailToken,
-        subscriptionCode: paymentMetadata.subscriptionCode,
+        provider: 'paystack',
+        emailToken: subscriptionCode.emailToken,
+        subscriptionCode: subscriptionCode.subscriptionCode,
       },
     });
 
@@ -374,13 +374,12 @@ export async function completeOnboarding(paymentMetadata: {
     return { tenant: createdTenant, user: createdUser };
   });
 
-  await emailQueue.add("welcome.tenant", {
+  await emailQueue.add('welcome.tenant', {
     tenantId: tenant.id,
     email: signup.email,
     fullName: signup.fullName,
-    slug: signup.slug,
+    url: `https://${signup.slug}.mcdms.com/login?autologin=true`,
     companyName: signup.companyName,
   });
-
   return { tenantId: tenant.id, userId: user.id, slug: signup.slug };
 }
