@@ -29,12 +29,10 @@ const worker = new Worker(
 async function expirePendingSignups(): Promise<Record<string, unknown>> {
   const now = new Date();
 
-  const expired = await prisma.pendingSignup.updateMany({
+  const expired = await prisma.pendingSignup.deleteMany({
     where: {
       status: { in: [SignupStatus.PENDING, SignupStatus.AWAITING_PAYMENT] },
-      expiresAt: { lt: now },
     },
-    data: { status: SignupStatus.EXPIRED },
   });
 
   logger.info({ count: expired.count }, 'Expired pending signups cleanup completed');

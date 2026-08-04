@@ -7,7 +7,6 @@ import {
   inviteWaitlistParamsSchema,
   listWaitlistQuerySchema,
 } from './waitlist.schemas.js';
-import { authorize } from '../../middlewares/authorize.middleware.js';
 import { requireSuperAdmin } from '../../middlewares/superAdmin.middleware.js';
 
 export const waitlistRouter = Router();
