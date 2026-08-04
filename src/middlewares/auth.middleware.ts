@@ -2,17 +2,18 @@ import type { NextFunction, Request, Response } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { HttpError } from '../utils/httpError.js';
 import { verifyAccessToken } from '../modules/auth/jwt.service.js';
+import { getFirstCookie } from '../utils/cookies.js';
 
-function getBearerToken(req: Request): string | undefined {
+export function getBearerToken(req: Request): string | undefined {
   const header = req.headers.authorization;
 
-  if (!header) return undefined;
+  if (header) {
+    const [scheme, token] = header.split(' ');
 
-  const [scheme, token] = header.split(' ');
+    if (scheme?.toLowerCase() === 'bearer' && token) return token;
+  }
 
-  if (scheme?.toLowerCase() !== 'bearer' || !token) return undefined;
-
-  return token;
+  return getFirstCookie(req, ['accessToken', 'access_token']);
 }
 
 export async function authenticate(req: Request, _res: Response, next: NextFunction) {
@@ -27,7 +28,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
 
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
-      include: { tenant: true }
+      include: { tenant: true },
     });
 
     if (!user || !user.isActive) {
@@ -35,7 +36,9 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     }
 
     if (user.tenantId !== payload.tenantId || user.role !== payload.role) {
-      return next(new HttpError(401, 'Token claims do not match current user state', 'TOKEN_STALE'));
+      return next(
+        new HttpError(401, 'Token claims do not match current user state', 'TOKEN_STALE'),
+      );
     }
 
     if (!['TRIAL', 'ACTIVE'].includes(user.tenant.status)) {
@@ -43,20 +46,22 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     }
 
     if (req.tenantId && req.tenantId !== user.tenantId) {
-      return next(new HttpError(403, 'Authenticated user does not belong to this tenant', 'TENANT_MISMATCH'));
+      return next(
+        new HttpError(403, 'Authenticated user does not belong to this tenant', 'TENANT_MISMATCH'),
+      );
     }
 
     req.tenantId = user.tenantId;
     req.tenant = {
       id: user.tenant.id,
       slug: user.tenant.slug,
-      status: user.tenant.status
+      status: user.tenant.status,
     };
     req.user = {
       id: user.id,
       tenantId: user.tenantId,
       role: user.role,
-      isOwner: user.isOwner
+      isOwner: user.isOwner,
     };
 
     next();

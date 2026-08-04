@@ -2,6 +2,8 @@ import { Worker, type Job } from 'bullmq';
 import { env } from '../../config/env.js';
 import { logger } from '../../lib/logger.js';
 import {
+  sendSignupPayment,
+  sendTenantWelcome,
   sendWaitlistAcknowledgement,
   sendWaitlistLaunchAnnouncement,
 } from '../../services/email.service.js';
@@ -14,7 +16,29 @@ const worker = new Worker(
     const startedAt = logJobStarted('email', job);
     let result: Record<string, unknown>;
 
-    if (job.name === 'waitlist.acknowledgement') {
+    if (job.name === 'welcome.tenant') {
+      await sendTenantWelcome(
+        job.data as {
+          email: string;
+          fullName: string;
+          companyName: string;
+          url: string;
+        },
+      );
+
+      result = { sent: true };
+    } else if (job.name === 'signup.payment') {
+      await sendSignupPayment(
+        job.data as {
+          email: string;
+          fullName: string;
+          companyName: string;
+          checkoutUrl: string;
+        },
+      );
+
+      result = { sent: true };
+    } else if (job.name === 'waitlist.acknowledgement') {
       await sendWaitlistAcknowledgement(
         job.data as {
           email: string;

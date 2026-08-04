@@ -239,6 +239,10 @@ export const swaggerDocument = {
       post: {
         summary: 'Login',
         tags: ['Auth'],
+        parameters: [
+          { $ref: '#/components/parameters/XTenantSlug' },
+          { $ref: '#/components/parameters/XSubdomain' },
+        ],
         requestBody: {
           required: true,
           content: {
@@ -2180,6 +2184,22 @@ export const swaggerDocument = {
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
+      },
+    },
+    parameters: {
+      XTenantSlug: {
+        in: 'header',
+        name: 'x-tenant-slug',
+        required: false,
+        schema: { type: 'string' },
+        description: 'Tenant slug, falls back to x-subdomain if omitted',
+      },
+      XSubdomain: {
+        in: 'header',
+        name: 'x-subdomain',
+        required: false,
+        schema: { type: 'string' },
+        description: 'Subdomain used to resolve tenant if x-tenant-slug is not provided',
       },
     },
   },
