@@ -48,6 +48,7 @@ const envSchema = z.object({
 
   APP_URL: z.string().url().default('http://localhost:3000'),
   ADMIN_URL: z.string().url().default('http://localhost:3000/admin'),
+  APP_NAME: z.string().default('FlexyShips'),
 });
 
 const parsed = envSchema.safeParse(process.env);

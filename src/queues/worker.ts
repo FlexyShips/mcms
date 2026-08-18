@@ -30,6 +30,8 @@ export async function startNotificationWorker(): Promise<void> {
     {},
     {
       repeat: { pattern: '0 6 * * *' },
+      // repeat: { pattern: '10 3 * * *' },
+
       jobId: 'daily-notification-scan',
       removeOnComplete: { count: 10 },
       removeOnFail: { count: 20 },

@@ -4,12 +4,15 @@ import { disconnectDatabase } from './lib/prisma.js';
 import { connectRedis, disconnectRedis } from './lib/redis.js';
 import { createApp } from './app.js';
 import { startNotificationWorker } from './queues/worker.js';
+import { initWhatsApp, setDisplayName } from './services/notification-delivery.service.js';
 
 const app = createApp();
 
 try {
   await connectRedis();
   await startNotificationWorker();
+  await initWhatsApp();
+  await setDisplayName(env.APP_NAME);
 } catch (error) {
   logger.warn(
     { error },

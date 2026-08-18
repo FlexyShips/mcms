@@ -1,0 +1,89 @@
+{
+  "noiseKey": {
+    "private": {
+      "type": "Buffer",
+      "data": "EH8u+xfpQs5hCXRNxnR3vUwTSLlZ1pCVCd+Qkmwxl0w="
+    },
+    "public": {
+      "type": "Buffer",
+      "data": "z7ueSTnymAnSOfx/XKZzZ7UsrEomtgzxVNDzailJAlY="
+    }
+  },
+  "pairingEphemeralKeyPair": {
+    "private": {
+      "type": "Buffer",
+      "data": "mLUNhXdufo4KaXPKYTuTaiX2vbYY4BoXvpxyIYuGgWQ="
+    },
+    "public": {
+      "type": "Buffer",
+      "data": "/ejDpSFHLd+PG96XevXWn+T0O5HZ1iTfkbUmzadP6XM="
+    }
+  },
+  "signedIdentityKey": {
+    "private": {
+      "type": "Buffer",
+      "data": "YKR1WCq2H644hh00C8UWJWr6dU5oav9Vf6n4tbofhUE="
+    },
+    "public": {
+      "type": "Buffer",
+      "data": "wLsCNPEPfPp3TVz9qStf9bs1YW5zgJZXiVeEJJnTG2o="
+    }
+  },
+  "signedPreKey": {
+    "keyPair": {
+      "private": {
+        "type": "Buffer",
+        "data": "KPJHJZd5XF1YeC61N47CbR0DlyYXHVCe9IIsKWieWXs="
+      },
+      "public": {
+        "type": "Buffer",
+        "data": "Rc6xz+GZhhS4JjF25er/tUnGbHsuvMabYfcl1VVfgDY="
+      }
+    },
+    "signature": {
+      "type": "Buffer",
+      "data": "YW0u/YIBd/+w+jF2wJgZaYRg/TXEo3GrTkKIxz/bNwwrMZ5INcb1cm3sOqUXCJ69xEHnCpRIfofw6AnCzR73gQ=="
+    },
+    "keyId": 1
+  },
+  "registrationId": 9,
+  "advSecretKey": "i5g0me+j+LATW7sMO369+GOkUoL1LLvLfjY0JP7naTg=",
+  "processedHistoryMessages": [],
+  "nextPreKeyId": 62,
+  "firstUnuploadedPreKeyId": 62,
+  "accountSyncCounter": 0,
+  "accountSettings": {
+    "unarchiveChats": false
+  },
+  "registered": false,
+  "account": {
+    "details": "CMTE+s8HEMbZ1NMGGAEgACgA",
+    "accountSignatureKey": "YWkI59CTuYwW447YKmdGubuXVDPWgBmosk/pdiyk/2A=",
+    "accountSignature": "XXuU5E5PRRcBElP+8NHiaruxGsKYu8TcIJX1w4tDpg4iPAOffn6l9nDpkE5nmCYy8vh+eW8xDTxQi6gUxlKVCA==",
+    "deviceSignature": "yK1MN5IC4+x1pN8mtNKp3odE6gv00F+hUl03LVi6P1zl8hA5fcFsLmfx6CuyelU2IzvkCBPig6nQIcuk2GZrhg=="
+  },
+  "me": {
+    "id": "2348074131858:11@s.whatsapp.net",
+    "name": "Chile",
+    "lid": "154258750087235:11@lid"
+  },
+  "signalIdentities": [
+    {
+      "identifier": {
+        "name": "2348074131858:11@s.whatsapp.net",
+        "deviceId": 0
+      },
+      "identifierKey": {
+        "type": "Buffer",
+        "data": "BWFpCOfQk7mMFuOO2CpnRrm7l1Qz1oAZqLJP6XYspP9g"
+      }
+    }
+  ],
+  "platform": "smba",
+  "routingInfo": {
+    "type": "Buffer",
+    "data": "CAsIDQgD"
+  },
+  "lastAccountSyncTimestamp": 1787066352,
+  "myAppStateKeyId": "AAAAACAa"
+}

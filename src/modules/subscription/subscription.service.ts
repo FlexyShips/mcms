@@ -3,11 +3,11 @@ import {
   PaymentStatus,
   SubscriptionStatus,
   TenantStatus,
-} from "../../generated/prisma/enums.js";
-import { prisma } from "../../lib/prisma.js";
-import { HttpError } from "../../utils/httpError.js";
-import { getEndPeriod } from "../../utils/periodEnds.js";
-import { paymentService } from "../payment/payment.service.js";
+} from '../../generated/prisma/enums.js';
+import { prisma } from '../../lib/prisma.js';
+import { HttpError } from '../../utils/httpError.js';
+import { getEndPeriod } from '../../utils/periodEnds.js';
+import { paymentService } from '../payment/payment.service.js';
 
 function periodEndFor(cycle: BillingCycle, from = new Date()): Date {
   const end = new Date(from);
@@ -28,34 +28,23 @@ function periodEndFor(cycle: BillingCycle, from = new Date()): Date {
 export async function getCurrentSubscription(tenantId: string) {
   const subscription = await prisma.subscription.findUnique({
     where: { tenantId },
-    include: { payments: { orderBy: { createdAt: "desc" }, take: 10 } },
+    include: { payments: { orderBy: { createdAt: 'desc' }, take: 10 } },
   });
 
   if (!subscription) {
-    throw new HttpError(
-      404,
-      "Subscription not found",
-      "SUBSCRIPTION_NOT_FOUND",
-    );
+    throw new HttpError(404, 'Subscription not found', 'SUBSCRIPTION_NOT_FOUND');
   }
 
   return subscription;
 }
 
-export async function initiateSubscription(input: {
-  tenantId: string;
-  planId: string;
-}) {
+export async function initiateSubscription(input: { tenantId: string; planId: string }) {
   const plan = await prisma.plan.findFirst({
     where: { gatewayPlanId: input.planId },
   });
 
   if (!plan) {
-    throw new HttpError(
-      400,
-      "Invalid subscription plan",
-      "INVALID_SUBSCRIPTION_PLAN",
-    );
+    throw new HttpError(400, 'Invalid subscription plan', 'INVALID_SUBSCRIPTION_PLAN');
   }
   const tenant = await prisma.tenant.findUnique({
     where: { id: input.tenantId },
@@ -63,18 +52,17 @@ export async function initiateSubscription(input: {
 
   const checkoutUrlResult = await paymentService.createCheckoutSession({
     email: tenant?.email!,
-    planCode: plan.gatewayPlanId!,
     amountKobo: plan.amountKobo,
     plan: plan.name,
     billingCycle: plan.billingCycle,
     companyName: tenant?.name!,
     slug: tenant?.slug!,
-    provider: "paystack",
-    type: "renewal",
+    provider: 'paystack',
+    type: 'renewal',
   });
   return {
     checkoutUrl: checkoutUrlResult.checkoutUrl,
-    provider: "paystack",
+    provider: 'paystack',
   };
 }
 
@@ -94,11 +82,7 @@ export async function renewSubscription(paymentMetadata: {
   });
 
   if (!subscription) {
-    throw new HttpError(
-      404,
-      "Subscription not found",
-      "SUBSCRIPTION_NOT_FOUND",
-    );
+    throw new HttpError(404, 'Subscription not found', 'SUBSCRIPTION_NOT_FOUND');
   }
 
   // Idempotency guard: if this exact payment reference was already applied,
@@ -116,8 +100,7 @@ export async function renewSubscription(paymentMetadata: {
   const now = new Date();
   // If renewing early, extend from the current period's end rather than
   // from "now" so the customer doesn't lose the days they already paid for.
-  const renewalStart =
-    subscription.currentPeriodEnd > now ? subscription.currentPeriodEnd : now;
+  const renewalStart = subscription.currentPeriodEnd > now ? subscription.currentPeriodEnd : now;
   const newPeriodEnd = getEndPeriod(renewalStart, subscription.billingCycle);
 
   await prisma.$transaction(async (tx) => {
@@ -143,7 +126,7 @@ export async function renewSubscription(paymentMetadata: {
           },
         },
         status: PaymentStatus.SUCCESS,
-        provider: "paystack",
+        provider: 'paystack',
         emailToken: paymentMetadata.emailToken,
         subscriptionCode: paymentMetadata.subscriptionCode,
       },
@@ -172,11 +155,10 @@ export async function cancelSubscription({
   const subscription = await getCurrentSubscription(tenantId);
 
   if (!subscription) {
-    throw new HttpError(404, "Subscription not found");
+    throw new HttpError(404, 'Subscription not found');
   }
 
-  const data =
-    await paymentService.cancelSubscriptionOnPaymentGateway(tenantId);
+  const data = await paymentService.cancelSubscriptionOnPaymentGateway(tenantId);
 
   // Update subscription status
   await prisma.subscription.update({

@@ -44,7 +44,7 @@ export const swaggerDocument = {
     },
     {
       name: 'Certificates',
-      description: 'Vessel certificate management',
+      description: 'Vessel and crew certificate management',
     },
     {
       name: 'Renewals',
@@ -1658,13 +1658,15 @@ export const swaggerDocument = {
               schema: {
                 type: 'object',
                 properties: {
-                  recipient: { type: 'string', format: 'email' },
+                  recipient: {
+                    type: 'string',
+                    description: 'Email, phone number, or omit for in-app tests',
+                  },
                   channel: {
                     type: 'string',
-                    enum: ['email', 'sms', 'whatsapp'],
+                    enum: ['email', 'sms', 'whatsapp', 'in_app'],
                   },
                 },
-                required: ['recipient'],
               },
             },
           },
@@ -1675,6 +1677,174 @@ export const swaggerDocument = {
             content: { 'application/json': { schema: { type: 'object' } } },
           },
         },
+      },
+    },
+    '/notifications/stream': {
+      get: {
+        summary: 'Stream authenticated in-app notifications',
+        description:
+          'Opens a Server-Sent Events stream for notifications addressed to the authenticated user.',
+        tags: ['Notifications'],
+        responses: {
+          '200': {
+            description: 'Server-Sent Events stream',
+            content: { 'text/event-stream': { schema: { type: 'string' } } },
+          },
+        },
+      },
+    },
+    '/crew/{id}/certificates': {
+      get: {
+        summary: 'List crew member certificates',
+        tags: ['Certificates'],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': {
+            description: 'Crew certificates',
+            content: { 'application/json': { schema: { type: 'object' } } },
+          },
+        },
+      },
+      post: {
+        summary: 'Create a crew member certificate',
+        tags: ['Certificates'],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  category: {
+                    type: 'string',
+                    enum: [
+                      'STATUTORY',
+                      'CLASSIFICATION',
+                      'OPERATIONAL',
+                      'COMPETENCY',
+                      'MEDICAL',
+                      'TRAVEL_DOCUMENT',
+                    ],
+                  },
+                  issuingAuthority: { type: 'string' },
+                  issuedAt: { type: 'string', format: 'date-time' },
+                  expiresAt: { type: 'string', format: 'date-time' },
+                  notes: { type: 'string' },
+                  status: {
+                    type: 'string',
+                    enum: ['VALID', 'EXPIRING_SOON', 'EXPIRED', 'UNDER_RENEWAL', 'SUSPENDED'],
+                  },
+                },
+                required: ['name', 'category', 'issuingAuthority', 'issuedAt', 'expiresAt'],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Crew certificate created',
+            content: { 'application/json': { schema: { type: 'object' } } },
+          },
+        },
+      },
+    },
+    '/crew/{id}/certificates/{certId}': {
+      get: {
+        summary: 'Get a crew member certificate',
+        tags: ['Certificates'],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'certId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': {
+            description: 'Crew certificate',
+            content: { 'application/json': { schema: { type: 'object' } } },
+          },
+        },
+      },
+      patch: {
+        summary: 'Update a crew member certificate',
+        tags: ['Certificates'],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'certId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object' } } },
+        },
+        responses: {
+          '200': {
+            description: 'Crew certificate updated',
+            content: { 'application/json': { schema: { type: 'object' } } },
+          },
+        },
+      },
+      delete: {
+        summary: 'Delete a crew member certificate',
+        tags: ['Certificates'],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'certId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '204': { description: 'Crew certificate deleted' } },
+      },
+    },
+    '/crew/{id}/documents': {
+      get: {
+        summary: 'List crew member documents',
+        tags: ['Crew'],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': {
+            description: 'Crew documents',
+            content: { 'application/json': { schema: { type: 'object' } } },
+          },
+        },
+      },
+      post: {
+        summary: 'Attach a document to a crew certificate',
+        tags: ['Crew'],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  certificateId: { type: 'string' },
+                  name: { type: 'string' },
+                  fileKey: { type: 'string' },
+                  fileUrl: { type: 'string', format: 'uri' },
+                  mimeType: { type: 'string' },
+                  sizeBytes: { type: 'integer' },
+                },
+                required: ['certificateId', 'name', 'fileKey'],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Crew document created',
+            content: { 'application/json': { schema: { type: 'object' } } },
+          },
+        },
+      },
+    },
+    '/crew/{id}/documents/{documentId}': {
+      delete: {
+        summary: 'Delete a crew member document',
+        tags: ['Crew'],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'documentId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '204': { description: 'Crew document deleted' } },
       },
     },
     '/vessels': {
@@ -1794,6 +1964,52 @@ export const swaggerDocument = {
           },
         ],
         responses: { '204': { description: 'Vessel deleted' } },
+      },
+    },
+    '/vessels/migration/template': {
+      get: {
+        summary: 'Download vessel migration Excel template',
+        tags: ['Vessels'],
+        responses: {
+          '200': {
+            description: 'Excel template',
+            content: {
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
+                schema: { type: 'string', format: 'binary' },
+              },
+            },
+          },
+          '403': { description: 'Excel migration module is disabled' },
+        },
+      },
+    },
+    '/vessels/migration': {
+      post: {
+        summary: 'Import vessels from an Excel workbook',
+        tags: ['Vessels'],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                properties: {
+                  file: { type: 'string', format: 'binary' },
+                },
+                required: ['file'],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Vessels imported',
+            content: { 'application/json': { schema: { type: 'object' } } },
+          },
+          '400': { description: 'Invalid or missing workbook data' },
+          '403': { description: 'Migration module, subscription, or vessel limit restriction' },
+          '409': { description: 'Duplicate IMO number' },
+        },
       },
     },
     '/vessels/{id}/superintendent': {
@@ -2025,9 +2241,12 @@ export const swaggerDocument = {
           },
         },
       },
+    },
+    '/users/invite': {
       post: {
         summary: 'Invite user',
         tags: ['Users'],
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -2036,10 +2255,11 @@ export const swaggerDocument = {
                 type: 'object',
                 properties: {
                   email: { type: 'string', format: 'email' },
-                  firstName: { type: 'string' },
-                  lastName: { type: 'string' },
+                  firstName: { type: 'string', minLength: 1, maxLength: 100 },
+                  lastName: { type: 'string', minLength: 1, maxLength: 100 },
                   role: {
                     type: 'string',
+                    description: 'Access role assigned to the invited user',
                     enum: [
                       'ADMIN',
                       'FLEET_MANAGER',
@@ -2055,9 +2275,20 @@ export const swaggerDocument = {
           },
         },
         responses: {
-          '200': {
-            description: 'User invited',
-            content: { 'application/json': { schema: { type: 'object' } } },
+          '201': {
+            description: 'User invited and invitation email queued',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    user: { type: 'object' },
+                    token: { type: 'string' },
+                    expiresInSeconds: { type: 'integer', example: 172800 },
+                  },
+                },
+              },
+            },
           },
         },
       },

@@ -3,6 +3,7 @@ import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { emailTemplateWrapper } from '../templates/emails/template.email.js';
 import htmlEscape from '../utils/htmlEscape.js';
+import { format } from 'date-fns';
 
 let transporter: Transporter | undefined;
 
@@ -22,6 +23,22 @@ function getTransporter(): Transporter {
   }
 
   return transporter;
+}
+
+export async function sendNotificationTestEmail(input: {
+  email: string;
+  companyName: string;
+}): Promise<void> {
+  const from = env.SES_FROM_EMAIL || env.SMTP_USER;
+  if (!from) throw new Error('SES_FROM_EMAIL or SMTP_USER must be configured');
+  const content = `<p>This is a test notification for <strong>${htmlEscape(input.companyName)}</strong>.</p><p>Your email notification configuration is working correctly.</p>`;
+  await getTransporter().sendMail({
+    from,
+    to: input.email,
+    subject: 'MCDMS notification test',
+    text: `This is a test notification for ${input.companyName}. Your email notification configuration is working correctly.`,
+    html: emailTemplateWrapper({ title: 'Notification test', content }),
+  });
 }
 
 export async function sendWaitlistAcknowledgement(input: {
@@ -111,6 +128,113 @@ export async function sendTenantWelcome(input: {
   logger.info({ email: input.email }, 'Tenant welcome email sent');
 }
 
+const userRoleLabels = {
+  ADMIN: 'Administrator',
+  FLEET_MANAGER: 'Fleet Manager',
+  MARINE_SUPERINTENDENT: 'Marine Superintendent',
+  HR_MANAGER: 'HR Manager',
+  CREW_MEMBER: 'Crew Member',
+} as const;
+
+export async function sendUserInvite(input: {
+  email: string;
+  firstName: string;
+  companyName: string;
+  role: keyof typeof userRoleLabels;
+  inviteUrl: string;
+}): Promise<void> {
+  const from = env.SES_FROM_EMAIL || env.SMTP_USER;
+
+  if (!from) {
+    throw new Error('SES_FROM_EMAIL or SMTP_USER must be configured');
+  }
+
+  const firstName = htmlEscape(input.firstName);
+  const companyName = htmlEscape(input.companyName);
+  const role = userRoleLabels[input.role];
+  const inviteUrl = htmlEscape(input.inviteUrl);
+  const content = `<p>Hi ${firstName},</p><p>You have been invited to join <strong>${companyName}</strong> on FlexyShips as a <strong>${role}</strong>.</p><p>Set your password to accept the invitation and access the workspace:</p><p><a href="${inviteUrl}" style="display: inline-block; background: #0f2a43; color: #ffffff; padding: 12px 20px; border-radius: 4px; text-decoration: none;">Accept invitation</a></p><p>This invitation expires in 48 hours.</p>`;
+
+  await getTransporter().sendMail({
+    from,
+    to: input.email,
+    subject: `You have been invited to join ${input.companyName} on FlexyShips`,
+    text: `Hi ${input.firstName},\n\nYou have been invited to join ${input.companyName} on FlexyShips as a ${role}. Accept your invitation and set your password here: ${input.inviteUrl}\n\nThis invitation expires in 48 hours.\n\nThe FlexyShips team`,
+    html: emailTemplateWrapper({ title: 'You have been invited to FlexyShips', content }),
+  });
+
+  logger.info({ email: input.email, role: input.role }, 'User invitation email sent');
+}
+
+export async function sendVesselSuperintendentAssignment(input: {
+  email: string;
+  firstName: string;
+  companyName: string;
+  vesselName: string;
+}): Promise<void> {
+  const from = env.SES_FROM_EMAIL || env.SMTP_USER;
+
+  if (!from) {
+    throw new Error('SES_FROM_EMAIL or SMTP_USER must be configured');
+  }
+
+  const firstName = htmlEscape(input.firstName);
+  const companyName = htmlEscape(input.companyName);
+  const vesselName = htmlEscape(input.vesselName);
+  const content = `<p>Hi ${firstName},</p><p>You have been assigned as the superintendent for <strong>${vesselName}</strong> in <strong>${companyName}</strong>.</p><p>Please sign in to review the vessel's compliance records and manage its assigned work.</p>`;
+
+  await getTransporter().sendMail({
+    from,
+    to: input.email,
+    subject: `You have been assigned to ${input.vesselName}`,
+    text: `Hi ${input.firstName},\n\nYou have been assigned as the superintendent for ${input.vesselName} in ${input.companyName}. Please sign in to review the vessel's compliance records and manage its assigned work.\n\nThe FlexyShips team`,
+    html: emailTemplateWrapper({ title: 'Vessel assignment', content }),
+  });
+
+  logger.info(
+    { email: input.email, vesselName: input.vesselName },
+    'Vessel superintendent assignment email sent',
+  );
+}
+
+export async function sendCrewVesselAssignment(input: {
+  email: string;
+  firstName: string;
+  companyName: string;
+  vesselName: string;
+  startDate: string;
+  endDate?: string;
+}): Promise<void> {
+  const from = env.SES_FROM_EMAIL || env.SMTP_USER;
+
+  if (!from) {
+    throw new Error('SES_FROM_EMAIL or SMTP_USER must be configured');
+  }
+
+  const firstName = htmlEscape(input.firstName);
+  const companyName = htmlEscape(input.companyName);
+  const vesselName = htmlEscape(input.vesselName);
+  const startDate = htmlEscape(format(new Date(input.startDate), 'MMMM d, yyyy'));
+  const endDate = input.endDate
+    ? htmlEscape(format(new Date(input.endDate), 'MMMM d, yyyy'))
+    : undefined;
+  const schedule = endDate ? `${startDate} to ${endDate}` : `from ${startDate}`;
+  const content = `<p>Hi ${firstName},</p><p>You have been assigned to the vessel <strong>${vesselName}</strong> in <strong>${companyName}</strong>.</p><p>Your assignment starts ${startDate}${endDate ? ` and ends ${endDate}` : ''}.</p>`;
+
+  await getTransporter().sendMail({
+    from,
+    to: input.email,
+    subject: `You have been assigned to ${input.vesselName}`,
+    text: `Hi ${input.firstName},\n\nYou have been assigned to the vessel ${input.vesselName} in ${input.companyName}, ${schedule}.\n\nThe FlexyShips team`,
+    html: emailTemplateWrapper({ title: 'Vessel assignment', content }),
+  });
+
+  logger.info(
+    { email: input.email, vesselName: input.vesselName },
+    'Crew vessel assignment email sent',
+  );
+}
+
 export async function sendSignupPayment(input: {
   email: string;
   fullName: string;
@@ -137,4 +261,46 @@ export async function sendSignupPayment(input: {
   });
 
   logger.info({ email: input.email }, 'Signup payment email sent');
+}
+
+export async function sendVesselCertificateExpiry(input: {
+  email: string;
+  firstName?: string;
+  companyName: string;
+  vesselName: string;
+  certificateName: string;
+  expiresAt: string;
+  daysRemaining: number;
+}): Promise<void> {
+  const from = env.SES_FROM_EMAIL || env.SMTP_USER;
+  if (!from) throw new Error('SES_FROM_EMAIL or SMTP_USER must be configured');
+  const state =
+    input.daysRemaining === 0 ? 'expires today' : `expires in ${input.daysRemaining} day(s)`;
+  const expiresAt = htmlEscape(format(new Date(input.expiresAt), 'MMMM d, yyyy'));
+  const content = `<p>Hi ${htmlEscape(input.firstName || 'there')},</p><p>The <strong>${htmlEscape(input.certificateName)}</strong> certificate for <strong>${htmlEscape(input.vesselName)}</strong> ${state} (${expiresAt}).</p><p>Please review the vessel compliance record and start the renewal process.</p>`;
+  await getTransporter().sendMail({
+    from,
+    to: input.email,
+    subject: `Vessel certificate expiry alert: ${input.vesselName}`,
+    text: `The ${input.certificateName} certificate for ${input.vesselName} ${state} (${expiresAt}). Please review the vessel compliance record and start renewal.`,
+    html: emailTemplateWrapper({ title: 'Vessel certificate expiry alert', content }),
+  });
+}
+
+export async function sendCrewDocumentExpiry(
+  input: Parameters<typeof sendVesselCertificateExpiry>[0],
+): Promise<void> {
+  const from = env.SES_FROM_EMAIL || env.SMTP_USER;
+  if (!from) throw new Error('SES_FROM_EMAIL or SMTP_USER must be configured');
+  const state =
+    input.daysRemaining === 0 ? 'expires today' : `expires in ${input.daysRemaining} day(s)`;
+  const expiresAt = htmlEscape(format(new Date(input.expiresAt), 'MMMM d, yyyy'));
+  const content = `<p>Hi ${htmlEscape(input.firstName || 'there')},</p><p>The <strong>${htmlEscape(input.certificateName)}</strong> document ${state} (${expiresAt}).</p><p>Please review the record and start the renewal process.</p>`;
+  await getTransporter().sendMail({
+    from,
+    to: input.email,
+    subject: `Crew document expiry alert: ${input.certificateName}`,
+    text: `The ${input.certificateName} document ${state} (${expiresAt}). Please review the record and start renewal.`,
+    html: emailTemplateWrapper({ title: 'Crew document expiry alert', content }),
+  });
 }
