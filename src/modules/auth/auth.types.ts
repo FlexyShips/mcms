@@ -1,27 +1,32 @@
-import { UserRole } from "../../generated/prisma/enums.js";
+import { UserRole } from '../../generated/prisma/enums.js';
 
 export type AccessTokenPayload = {
   sub: string;
   tenantId: string;
   role: UserRole;
   isOwner: boolean;
-  type: "access";
+  type: 'access';
 };
 
 export type RefreshTokenPayload = {
   sub: string;
   tenantId: string;
   tokenId: string;
-  type: "refresh";
+  type: 'refresh';
 };
 
 export type SuperAdminAccessTokenPayload = {
   sub: string;
-  scope: "platform";
-  type: "super_admin_access";
+  scope: 'platform';
+  type: 'super_admin_access';
 };
 
 export type AuthTokens = {
   accessToken: string;
   refreshToken: string;
+};
+
+export type SignupTokenPayload = {
+  email: string;
+  type: 'signup';
 };

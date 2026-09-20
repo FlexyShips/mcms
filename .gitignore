@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+auth_info/
 .env
 .env.*
 !.env.example

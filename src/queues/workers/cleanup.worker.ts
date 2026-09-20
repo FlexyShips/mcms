@@ -16,6 +16,8 @@ const worker = new Worker(
 
     if (name === 'expire-pending-signups') {
       result = await expirePendingSignups();
+    } else if (name === 'cleanup-expired-reports') {
+      result = await cleanupExpiredReports();
     } else {
       result = { skipped: true };
     }
@@ -38,6 +40,15 @@ async function expirePendingSignups(): Promise<Record<string, unknown>> {
   logger.info({ count: expired.count }, 'Expired pending signups cleanup completed');
 
   return { expired: true, count: expired.count };
+}
+
+async function cleanupExpiredReports(): Promise<Record<string, unknown>> {
+  const cleaned = await prisma.reportJob.updateMany({
+    where: { expiresAt: { lt: new Date() }, fileData: { not: null } },
+    data: { fileData: null },
+  });
+  logger.info({ count: cleaned.count }, 'Expired report artifacts cleanup completed');
+  return { cleanedReports: cleaned.count };
 }
 
 export async function checkCleanupQueueConnection(): Promise<'connected' | 'disconnected'> {

@@ -273,6 +273,29 @@ async function scanExpiringCertificates() {
       },
       data: { status: 'EXPIRED' },
     });
+
+    const expiringSoonThreshold = new Date();
+    expiringSoonThreshold.setDate(
+      expiringSoonThreshold.getDate() + settings.expiringSoonThresholdDays,
+    );
+
+    await prisma.certificate.updateMany({
+      where: {
+        tenantId: tenant.id,
+        expiresAt: { gte: new Date(), lte: expiringSoonThreshold },
+        status: { notIn: ['SUSPENDED', 'UNDER_RENEWAL'] },
+      },
+      data: { status: 'EXPIRING_SOON' },
+    });
+
+    await prisma.certificate.updateMany({
+      where: {
+        tenantId: tenant.id,
+        expiresAt: { gt: expiringSoonThreshold },
+        status: 'EXPIRING_SOON',
+      },
+      data: { status: 'VALID' },
+    });
   }
 }
 

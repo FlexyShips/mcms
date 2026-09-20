@@ -5,8 +5,6 @@ datasource db {
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
-  previewFeatures = ["queryCompiler", "driverAdapters"]
-
 }
 
 model Tenant {
@@ -32,6 +30,7 @@ model Tenant {
   webhooks         WebhookEndpoint[]
   notificationLogs NotificationLog[]
   aiInteractions   AiInteraction[]
+  reports          ReportJob[]
 
   @@index([status])
 }
@@ -61,36 +60,33 @@ model Subscription {
   cancelReason       String?
   paymentReference   String?
   createdAt          DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  updatedAt          DateTime           @updatedAt
   payments           Payment[]
 }
 
-
-
-
 model Plan {
-  id            String   @id @default(cuid())
-  name          String   @unique
-  description   String?
-  billingCycle  BillingCycle @default(MONTHLY)
-  amountKobo    Int
-  currency      String   @default("NGN")
-  gatewayPlanId String?
-  moduleFleetDashboard   Boolean @default(true)
-  moduleVesselManagement Boolean @default(true)
-  moduleCrewManagement   Boolean @default(true)
-  moduleExcelMigration   Boolean @default(true)
-  moduleDocumentRepository Boolean @default(true)
-  moduleReporting          Boolean @default(true)
-  moduleRenewalWorkflow    Boolean @default(true)
-  moduleNotifications      Boolean @default(true)
-  moduleAiFeatures         Boolean @default(false)
-  moduleIntegrations       Boolean @default(false)
-  vesselLimit      Int     @default(1)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  subscriptions  Subscription[]
-  pendingSignups PendingSignup[]
+  id                       String          @id @default(cuid())
+  name                     String          @unique
+  description              String?
+  billingCycle             BillingCycle    @default(MONTHLY)
+  amountKobo               Int
+  currency                 String          @default("NGN")
+  gatewayPlanId            String?
+  moduleFleetDashboard     Boolean         @default(true)
+  moduleVesselManagement   Boolean         @default(true)
+  moduleCrewManagement     Boolean         @default(true)
+  moduleExcelMigration     Boolean         @default(true)
+  moduleDocumentRepository Boolean         @default(true)
+  moduleReporting          Boolean         @default(true)
+  moduleRenewalWorkflow    Boolean         @default(true)
+  moduleNotifications      Boolean         @default(true)
+  moduleAiFeatures         Boolean         @default(false)
+  moduleIntegrations       Boolean         @default(false)
+  vesselLimit              Int             @default(1)
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+  subscriptions            Subscription[]
+  pendingSignups           PendingSignup[]
 
   @@index([name])
   @@index([billingCycle])
@@ -118,20 +114,20 @@ enum BillingCycle {
 }
 
 model Payment {
-  id             String        @id @default(cuid())
-  subscriptionId String
-  subscription   Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  amount         Decimal       @db.Decimal(10, 2)
-  currency       String
-  reference      String        @unique
-  provider       String
-  status         PaymentStatus
-  paidAt         DateTime?
-  metadata       Json?
-  emailToken     String?
-  subscriptionCode     String?
-  createdAt      DateTime      @default(now())
-  }
+  id               String        @id @default(cuid())
+  subscriptionId   String
+  subscription     Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  amount           Decimal       @db.Decimal(10, 2)
+  currency         String
+  reference        String        @unique
+  provider         String
+  status           PaymentStatus
+  paidAt           DateTime?
+  metadata         Json?
+  emailToken       String?
+  subscriptionCode String?
+  createdAt        DateTime      @default(now())
+}
 
 enum PaymentStatus {
   PENDING
@@ -172,15 +168,15 @@ model PendingSignup {
   companyName  String
   slug         String @unique
   reference    String @unique
-
-  planId       String?
-  plan         Plan?  @relation(fields: [planId], references: [id])
-  cycle        BillingCycle?
-  status       SignupStatus @default(PENDING)
-  tenantId     String?
+  firstPaymentCompleted Boolean @default(false)
+  planId    String?
+  plan      Plan?         @relation(fields: [planId], references: [id])
+  cycle     BillingCycle?
+  status    SignupStatus  @default(PENDING)
+  tenantId  String?
   expiresAt DateTime
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 
   @@index([status, expiresAt])
   @@index([slug])
@@ -196,35 +192,36 @@ enum SignupStatus {
 }
 
 model SignupToken {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   signupId  String
-  token     String   @unique
+  token     String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([signupId])
   @@index([expiresAt])
 }
 
 model User {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   tenantId     String
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   email        String
   passwordHash String
   firstName    String
   lastName     String
   role         UserRole
-  isOwner      Boolean  @default(false)
-  isActive     Boolean  @default(true)
+  isOwner      Boolean   @default(false)
+  isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  refreshTokens   RefreshToken[]
-  auditLogs       AuditLog[]
-  assignedVessels Vessel[]       @relation("VesselSuperintendent")
+  refreshTokens    RefreshToken[]
+  auditLogs        AuditLog[]
+  assignedVessels  Vessel[]       @relation("VesselSuperintendent")
+  requestedReports ReportJob[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -252,14 +249,14 @@ model RefreshToken {
 }
 
 model SuperAdmin {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String    @id @default(cuid())
+  email        String    @unique
   passwordHash String
   firstName    String
   lastName     String
-  isActive     Boolean  @default(true)
+  isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
 
   auditLogs SuperAdminAuditLog[]
 }
@@ -283,6 +280,7 @@ model Vessel {
   certificates    Certificate[]
   crewAssignments VesselCrewAssignment[]
   renewalItems    RenewalItem[]
+  documents       Document[]
 
   @@index([tenantId])
   @@index([assignedSuperintendentId])
@@ -297,13 +295,13 @@ enum VesselStatus {
 }
 
 model Certificate {
-  id               String      @id @default(cuid())
+  id               String       @id @default(cuid())
   tenantId         String
   vesselId         String?
   crewMemberId     String?
-  tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vessel           Vessel?     @relation(fields: [vesselId], references: [id], onDelete: SetNull)
-  crewMember       CrewMember? @relation(fields: [crewMemberId], references: [id], onDelete: SetNull)
+  tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vessel           Vessel?      @relation(fields: [vesselId], references: [id], onDelete: SetNull)
+  crewMember       CrewMember?  @relation(fields: [crewMemberId], references: [id], onDelete: SetNull)
   name             String
   category         CertCategory
   issuingAuthority String
@@ -311,10 +309,10 @@ model Certificate {
   expiresAt        DateTime
   fileUrl          String?
   fileKey          String?
-  status           CertStatus  @default(VALID)
+  status           CertStatus   @default(VALID)
   notes            String?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   renewalItem      RenewalItem?
   documents        Document[]
@@ -345,11 +343,13 @@ enum CertStatus {
 }
 
 model Document {
-  id            String    @id @default(cuid())
+  id            String       @id @default(cuid())
   tenantId      String
-  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   certificateId String?
   certificate   Certificate? @relation(fields: [certificateId], references: [id], onDelete: SetNull)
+  vesselId      String?
+  vessel        Vessel?      @relation(fields: [vesselId], references: [id], onDelete: SetNull)
   name          String
   fileKey       String
   fileUrl       String?
@@ -357,23 +357,68 @@ model Document {
   sizeBytes     Int?
   uploadedBy    String?
   metadata      Json?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   embeddings DocumentEmbedding[]
 
   @@index([tenantId])
   @@index([certificateId])
+  @@index([vesselId])
+}
+
+model ReportJob {
+  id           String       @id @default(cuid())
+  tenantId     String
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requestedBy  String
+  requester    User         @relation(fields: [requestedBy], references: [id], onDelete: Cascade)
+  type         ReportType
+  format       ReportFormat
+  status       ReportStatus @default(QUEUED)
+  filters      Json
+  progress     Int          @default(0)
+  fileName     String?
+  mimeType     String?
+  sizeBytes    Int?
+  fileData     Bytes?
+  errorMessage String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  expiresAt    DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([requestedBy, createdAt])
+  @@index([status])
+}
+
+enum ReportType {
+  VESSEL_COMPLIANCE
+}
+
+enum ReportFormat {
+  PDF
+  EXCEL
+  CSV
+}
+
+enum ReportStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 
 model DocumentEmbedding {
-  id         String                     @id @default(cuid())
+  id         String                       @id @default(cuid())
   tenantId   String
   documentId String
-  document   Document                   @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  content    String                     @db.Text
+  document   Document                     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content    String                       @db.Text
   embedding  Unsupported("vector(1536)")?
-  createdAt  DateTime                   @default(now())
+  createdAt  DateTime                     @default(now())
 
   @@index([tenantId])
   @@index([documentId])
@@ -633,14 +678,14 @@ model PlatformSettings {
   aiDailyTokenLimitGrowth     Int     @default(200000)
   aiDailyTokenLimitEnterprise Int     @default(1000000)
 
-  emailEnabled              Boolean  @default(true)
-  smsEnabled                Boolean  @default(true)
-  whatsappEnabled           Boolean  @default(false)
-  defaultAlertDays          Int[]    @default([60, 30, 14, 7])
-  starterSmsEnabled         Boolean  @default(false)
-  growthSmsEnabled          Boolean  @default(true)
-  enterpriseSmsEnabled      Boolean  @default(true)
-  enterpriseWhatsappEnabled Boolean  @default(true)
+  emailEnabled              Boolean @default(true)
+  smsEnabled                Boolean @default(true)
+  whatsappEnabled           Boolean @default(false)
+  defaultAlertDays          Int[]   @default([60, 30, 14, 7])
+  starterSmsEnabled         Boolean @default(false)
+  growthSmsEnabled          Boolean @default(true)
+  enterpriseSmsEnabled      Boolean @default(true)
+  enterpriseWhatsappEnabled Boolean @default(true)
 
   maxFileSizeMb            Int      @default(10)
   allowedFileTypes         String[] @default(["pdf", "jpg", "jpeg", "png", "xlsx", "docx"])
@@ -660,9 +705,9 @@ model PlatformSettings {
   waitlistInviteTokenTtlHours Int     @default(48)
   registrationOpen            Boolean @default(false)
 
-  maintenanceMode         Boolean     @default(false)
-  maintenanceMessage      String?
-  platformAnnouncement    String?
+  maintenanceMode          Boolean     @default(false)
+  maintenanceMessage       String?
+  platformAnnouncement     String?
   platformAnnouncementType NoticeType?
 
   lastModifiedBy String   @default("system")

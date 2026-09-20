@@ -169,13 +169,36 @@ export async function uploadVesselCertificateFile(input: {
     userId: input.userId,
   });
 
-  return prisma.certificate.update({
-    where: { id: input.certificateId },
-    data: {
-      fileUrl: input.fileUrl,
-      fileKey: input.fileKey,
-      ...(input.mimeType ? { notes: input.mimeType } : {}),
-      ...(input.sizeBytes ? { notes: `${input.mimeType ?? ''}:${input.sizeBytes}` } : {}),
-    },
+  return prisma.$transaction(async (tx) => {
+    const existingDocument = await tx.document.findFirst({
+      where: {
+        tenantId: input.tenantId,
+        certificateId: input.certificateId,
+        fileKey: input.fileKey,
+      },
+      select: { id: true },
+    });
+
+    if (!existingDocument) {
+      await tx.document.create({
+        data: {
+          tenantId: input.tenantId,
+          vesselId: input.vesselId,
+          certificateId: input.certificateId,
+          name: input.fileKey.split('/').pop() ?? 'certificate-file',
+          fileUrl: input.fileUrl,
+          fileKey: input.fileKey,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes,
+          uploadedBy: input.userId,
+        },
+      });
+    }
+
+    return tx.certificate.update({
+      where: { id: input.certificateId },
+      data: { fileUrl: input.fileUrl, fileKey: input.fileKey },
+      include: { documents: true },
+    });
   });
 }

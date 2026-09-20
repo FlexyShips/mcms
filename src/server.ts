@@ -11,7 +11,7 @@ const app = createApp();
 try {
   await connectRedis();
   await startNotificationWorker();
-  await initWhatsApp();
+  // await initWhatsApp();
   await setDisplayName(env.APP_NAME);
 } catch (error) {
   logger.warn(

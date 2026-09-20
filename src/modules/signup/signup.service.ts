@@ -14,8 +14,13 @@ import {
 } from '../../generated/prisma/client.js';
 import { paymentService } from '../payment/payment.service.js';
 import { getEndPeriod } from '../../utils/periodEnds.js';
+import { env } from '../../config/env.js';
+import { email } from 'zod/v4';
+import { signASignUpToken, verifySignupToken } from '../auth/jwt.service.js';
+import { redis } from '../../lib/redis.js';
 
 const SIGNUP_EXPIRATION_HOURS = 24;
+const EXPIRY_MINUTES = 5;
 
 const RESERVED_SLUGS = new Set([
   'www',
@@ -77,15 +82,20 @@ function addDays(date: Date, days: number): Date {
 }
 
 export async function createSignup(input: {
-  fullName: string;
-  email: string;
-  password: string;
-  companyName: string;
-  slug: string;
-  planId: string;
+  id: string;
 }): Promise<{ reference: string; checkoutUrl?: string; provider?: string }> {
-  const email = normalizeEmail(input.email);
-  const slug = input.slug.toLowerCase();
+  const signup = await prisma.pendingSignup.findFirst({
+    where: {
+      id: input.id,
+      status: SignupStatus.PENDING,
+    },
+  });
+
+  if (!signup) {
+    throw new HttpError(400, 'Invalid signup', 'INVALID_CREDENTIALS');
+  }
+
+  const { fullName, email, companyName, slug } = signup;
 
   const existingUser = await prisma.user.findFirst({ where: { email } });
 
@@ -93,124 +103,112 @@ export async function createSignup(input: {
     throw new HttpError(409, 'Email is already registered', 'EMAIL_EXISTS');
   }
 
-  const slugCheck = await checkSlugAvailability(slug);
-  if (!slugCheck.available) {
-    throw new HttpError(409, 'Slug is already taken', 'SLUG_TAKEN');
-  }
-  await prisma.pendingSignup.delete({
-    where: { email, status: { in: [SignupStatus.PENDING, SignupStatus.AWAITING_PAYMENT] } },
-  });
-
-  const passwordHash = await bcrypt.hash(input.password, 12);
   const reference = `signup_${randomBytes(16).toString('hex')}`;
-  const expiresAt = addHours(new Date(), SIGNUP_EXPIRATION_HOURS);
-  const plan = await prisma.plan.findFirst({
-    where: { id: input.planId },
-  });
-
-  if (!plan) {
-    throw new HttpError(400, 'Invalid subscription plan', 'INVALID_SUBSCRIPTION_PLAN');
-  }
-  const signup = await prisma.pendingSignup.create({
-    data: {
-      email,
-      passwordHash,
-      fullName: input.fullName,
-      companyName: input.companyName,
-      slug,
-      reference,
-      plan: { connect: { id: plan.id } },
-      cycle: plan.billingCycle,
-      status: SignupStatus.PENDING,
-      expiresAt,
+  const plan = await prisma.plan.findFirst({ where: { id: signup.planId! } });
+  const freePlan = await prisma.plan.findFirst({
+    where: {
+      amountKobo: 0,
+    },
+    select: {
+      id: true,
     },
   });
 
-  if (plan.amountKobo <= 0) {
-    const trialEndsAt = addDays(new Date(), 14);
+  if (!plan || !freePlan) {
+    throw new HttpError(400, 'Invalid subscription plan', 'INVALID_SUBSCRIPTION_PLAN');
+  }
 
-    await prisma.$transaction(async (tx) => {
-      const tenant = await tx.tenant.create({
-        data: {
-          name: input.companyName,
-          slug,
-          email,
-          status: TenantStatus.TRIAL,
-          trialEndsAt,
-          settings: {
-            create: {
-              moduleAiFeatures: false,
-              moduleIntegrations: false,
-              lastModifiedBy: 'signup',
-            },
-          },
-          subscription: {
-            create: {
-              planId: plan.id,
-              status: SubscriptionStatus.ACTIVE,
-              billingCycle: BillingCycle.MONTHLY,
-              amount: '0',
-              currency: 'NGN',
-              currentPeriodStart: new Date(),
-              currentPeriodEnd: trialEndsAt,
-            },
+  const isPaidPlan = plan.amountKobo > 0;
+  const trialEndsAt = addDays(new Date(), 14);
+  const passwordHash = signup?.passwordHash;
+
+  // Everyone gets provisioned onto a trial tenant immediately, regardless of plan.
+  const tenant = await prisma.$transaction(async (tx) => {
+    const createdTenant = await tx.tenant.create({
+      data: {
+        name: signup.companyName,
+        slug,
+        email,
+        status: TenantStatus.TRIAL,
+        trialEndsAt,
+        settings: {
+          create: {
+            moduleAiFeatures: false,
+            moduleIntegrations: false,
+            lastModifiedBy: 'signup',
           },
         },
-      });
-
-      await tx.user.create({
-        data: {
-          tenantId: tenant.id,
-          email,
-          passwordHash,
-          firstName: input.fullName.split(' ')[0] ?? input.fullName,
-          lastName: input.fullName.split(' ').slice(1).join(' ') ?? '',
-          role: UserRole.ADMIN,
-          isOwner: true,
+        //  initial subscription is going to be trial this must never come from the paystack plan
+        subscription: {
+          create: {
+            planId: freePlan?.id,
+            status: SubscriptionStatus.ACTIVE,
+            billingCycle: BillingCycle.MONTHLY,
+            amount: '0',
+            currency: 'NGN',
+            currentPeriodStart: new Date(),
+            currentPeriodEnd: trialEndsAt,
+          },
         },
-      });
-
-      await tx.pendingSignup.update({
-        where: { id: signup.id },
-        data: { status: SignupStatus.ACTIVE, tenantId: tenant.id },
-      });
+      },
     });
 
-    await emailQueue.add('welcome.tenant', {
-      tenantId: signup.id,
-      email,
-      fullName: input.fullName,
-      url: `https://${slug}.mcdms.com/login?autologin=true`,
-      companyName: input.companyName,
+    await tx.user.create({
+      data: {
+        tenantId: createdTenant.id,
+        email,
+        passwordHash,
+        firstName: fullName.split(' ')[0] ?? fullName,
+        lastName: fullName.split(' ').slice(1).join(' ') ?? '',
+        role: UserRole.ADMIN,
+        isOwner: true,
+      },
     });
 
+    await tx.pendingSignup.update({
+      where: { id: signup.id },
+      data: {
+        tenantId: createdTenant.id,
+        reference,
+        status: isPaidPlan ? SignupStatus.AWAITING_PAYMENT : SignupStatus.ACTIVE,
+      },
+    });
+
+    return createdTenant;
+  });
+
+  await emailQueue.add('welcome.tenant', {
+    tenantId: tenant.id,
+    email,
+    fullName: fullName,
+    url: `https://${slug}.${env.FRONTEND_DOMAIN}/login?autologin=true`,
+    companyName: companyName,
+  });
+  if (!isPaidPlan) {
     return { reference };
   }
 
+  // Paid plan: tenant is already live on trial — checkout is just to set up billing for when the trial ends.
   const checkoutUrlResult = await paymentService.createCheckoutSession({
     email,
     amountKobo: plan.amountKobo,
     plan: plan.name,
     billingCycle: plan.billingCycle,
     signupReference: reference,
-    companyName: input.companyName,
-    slug: input.slug,
+    companyName: companyName,
+    slug: slug,
     provider: 'paystack',
-    fullName: input.fullName,
+    fullName: fullName,
     type: 'signup',
   });
 
-  await prisma.pendingSignup.update({
-    where: { id: signup.id },
-    data: { status: SignupStatus.AWAITING_PAYMENT },
-  });
-
   await emailQueue.add('signup.payment', {
-    tenantId: signup.id,
+    tenantId: tenant.id,
     email,
-    fullName: input.fullName,
+    fullName: fullName,
     checkoutUrl: checkoutUrlResult.checkoutUrl,
-    companyName: input.companyName,
+    companyName: companyName,
+    plan: plan.name,
   });
 
   return {
@@ -219,7 +217,6 @@ export async function createSignup(input: {
     provider: 'paystack',
   };
 }
-
 export async function getSignupStatus(reference: string): Promise<{
   status: SignupStatus;
   slug?: string;
@@ -277,9 +274,9 @@ export async function completeOnboarding(paymentMetadata: {
     });
     if (existingTenant) {
       return {
-        tenantId: existingTenant.id,
-        userId: existingTenant.users[0]!.id,
-        slug: existingTenant.slug,
+        tenantId: existingTenant?.id,
+        userId: existingTenant?.users[0]!.id,
+        slug: existingTenant?.slug,
       };
     }
   }
@@ -300,24 +297,35 @@ export async function completeOnboarding(paymentMetadata: {
   const billingCycle = signup.cycle ?? signup.plan.billingCycle;
   const endsAt = getEndPeriod(now, billingCycle);
 
+  const moduleFlags = {
+    moduleFleetDashboard: signup.plan!.moduleFleetDashboard,
+    moduleVesselManagement: signup.plan!.moduleVesselManagement,
+    moduleCrewManagement: signup.plan!.moduleCrewManagement,
+    moduleExcelMigration: signup.plan!.moduleExcelMigration,
+    moduleDocumentRepository: signup.plan!.moduleDocumentRepository,
+    moduleReporting: signup.plan!.moduleReporting,
+    moduleRenewalWorkflow: signup.plan!.moduleRenewalWorkflow,
+    moduleNotifications: signup.plan!.moduleNotifications,
+    moduleAiFeatures: signup.plan!.moduleAiFeatures,
+    moduleIntegrations: signup.plan!.moduleIntegrations,
+    lastModifiedBy: 'signup',
+  };
+
   const { tenant, user } = await prisma.$transaction(async (tx) => {
-    const createdTenant = await tx.tenant.create({
+    // you will only need to update the tenant
+    const createdTenant = await tx.tenant.update({
+      where: { name: signup.companyName, slug: signup.slug, email: signup.email },
       data: {
-        name: signup.companyName,
-        slug: signup.slug,
-        email: signup.email,
         status: paymentMetadata.status,
         settings: {
-          create: {
-            moduleAiFeatures: signup.plan!.name !== SubscriptionPlan.STARTER,
-            moduleIntegrations: signup.plan!.name !== SubscriptionPlan.STARTER,
-            lastModifiedBy: 'signup',
-          },
+          upsert: { create: moduleFlags, update: moduleFlags },
         },
       },
     });
-
-    const subscription = await tx.subscription.create({
+    const subscription = await tx.subscription.update({
+      where: {
+        tenantId: signup?.tenantId!,
+      },
       data: {
         status: SubscriptionStatus.ACTIVE,
         billingCycle,
@@ -327,19 +335,17 @@ export async function completeOnboarding(paymentMetadata: {
         currentPeriodEnd: endsAt,
         paymentReference: paymentMetadata.paymentReference,
         plan: { connect: { id: signup.plan!.id } },
-        tenant: { connect: { id: createdTenant.id } },
       },
     });
 
-    const createdUser = await tx.user.create({
-      data: {
-        tenantId: createdTenant.id,
+    // only get the user
+
+    const createdUser = await tx.user.findFirst({
+      where: {
         email: signup.email,
-        passwordHash: signup.passwordHash,
-        firstName: signup.fullName.split(' ')[0] ?? signup.fullName,
-        lastName: signup.fullName.split(' ').slice(1).join(' ') ?? '',
-        role: UserRole.ADMIN,
-        isOwner: true,
+      },
+      omit: {
+        passwordHash: true,
       },
     });
 
@@ -368,18 +374,184 @@ export async function completeOnboarding(paymentMetadata: {
 
     await tx.pendingSignup.update({
       where: { id: signup.id },
-      data: { status: SignupStatus.ACTIVE, tenantId: createdTenant.id },
+      data: {
+        status: SignupStatus.ACTIVE,
+        tenantId: createdTenant.id,
+        firstPaymentCompleted: true,
+      },
     });
 
     return { tenant: createdTenant, user: createdUser };
   });
 
-  await emailQueue.add('welcome.tenant', {
-    tenantId: tenant.id,
-    email: signup.email,
-    fullName: signup.fullName,
-    url: `https://${signup.slug}.mcdms.com/login?autologin=true`,
-    companyName: signup.companyName,
+  //  TODO: this email queue will be for his payment receipt and not for welcome email
+  // await emailQueue.add('welcome.tenant', {
+  //   tenantId: tenant.id,
+  //   email: signup.email,
+  //   fullName: signup.fullName,
+  //   url: `https://${signup.slug}.${env.FRONTEND_DOMAIN}/login?autologin=true`,
+  //   companyName: signup.companyName,
+  // });
+  return { tenantId: tenant.id, userId: user?.id ?? '', slug: signup.slug };
+}
+
+export async function signupToken(input: {
+  fullName: string;
+  email: string;
+  password: string;
+  companyName: string;
+  slug: string;
+  planId: string;
+}): Promise<{ message: string; expiresAt: number }> {
+  const email = normalizeEmail(input.email);
+  const slug = input.slug.toLowerCase();
+
+  // 1. Check if user already exists — bail out before touching pendingSignup
+  const existingUser = await prisma.user.findFirst({ where: { email } });
+  if (existingUser) {
+    throw new HttpError(409, 'Email is already registered', 'EMAIL_EXISTS');
+  }
+
+  // 2. Clear out any stale pending signup for this email (safe no-op if none exists)
+  await prisma.pendingSignup.deleteMany({
+    where: { email, status: { in: [SignupStatus.PENDING, SignupStatus.AWAITING_PAYMENT] } },
   });
-  return { tenantId: tenant.id, userId: user.id, slug: signup.slug };
+
+  // 3. Check slug availability
+  const slugCheck = await checkSlugAvailability(slug);
+  if (!slugCheck?.available) {
+    throw new HttpError(409, 'Slug is already taken', 'SLUG_TAKEN');
+  }
+
+  // 4. Validate plan
+  const plan = await prisma.plan.findFirst({ where: { id: input.planId } });
+  if (!plan) {
+    throw new HttpError(400, 'Invalid subscription plan', 'INVALID_SUBSCRIPTION_PLAN');
+  }
+
+  const passwordHash = await bcrypt.hash(input.password, 12);
+  const reference = `signup_${randomBytes(16).toString('hex')}`;
+  const expiresAt = addHours(new Date(), SIGNUP_EXPIRATION_HOURS);
+
+  await prisma.pendingSignup.create({
+    data: {
+      email,
+      passwordHash,
+      fullName: input.fullName,
+      companyName: input.companyName,
+      slug,
+      reference,
+      plan: { connect: { id: plan.id } },
+      cycle: plan.billingCycle,
+      status: SignupStatus.PENDING,
+      expiresAt,
+    },
+  });
+
+  const token = signASignUpToken(input);
+
+  //   expiration time need to be kept in the redis for this user so it can be access easily
+  await redis.set(email, JSON.stringify({ timeAt: new Date() }), 'EX', EXPIRY_MINUTES * 60);
+
+  await emailQueue.add('verify.email', {
+    email,
+    fullName: input.fullName,
+    url: `https://${env.FRONTEND_DOMAIN}/verify-email?token=${token}`,
+    companyName: input.companyName,
+  });
+
+  return { message: 'Please check your email for confirmation link', expiresAt: EXPIRY_MINUTES };
+}
+export async function verifySignupTokenAndCompleteReg(input: {
+  token: string;
+}): Promise<{ reference: string; checkoutUrl?: string; provider?: string }> {
+  // verify token
+  const { type, ...verifiedToken } = verifySignupToken(input.token);
+
+  const pendingSignup = await prisma.pendingSignup.findFirst({
+    where: {
+      email: verifiedToken.email,
+      status: SignupStatus.PENDING,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!pendingSignup) {
+    throw new HttpError(400, 'Invalid token', 'INVALID_TOKEN');
+  }
+
+  const signup = await createSignup(pendingSignup);
+  //  call the  create sign user up service
+  return signup;
+}
+
+export async function resendEmailVerificationToken(input: {
+  email: string;
+}): Promise<{ message: string; expiresAt: string | number }> {
+  //  check if this user exist so you do not create him twice
+  const email = normalizeEmail(input.email);
+  const raw = await redis.get(email);
+
+  if (raw) {
+    const data = JSON.parse(raw) as { timeAt: Date };
+    const diffMs = new Date().getTime() - new Date(data.timeAt).getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const isTokenExpired = diffMinutes > EXPIRY_MINUTES;
+    if (!isTokenExpired) {
+      return {
+        message: 'Please check your email for confirmation link',
+        expiresAt: EXPIRY_MINUTES - diffMinutes,
+      };
+    }
+  }
+
+  const existingUser = await prisma.user.findFirst({ where: { email } });
+  const expiresAt = addHours(new Date(), SIGNUP_EXPIRATION_HOURS);
+
+  //  if token has not expired then the should wait for it to expire before requesting for new one
+  //  get when last the pending signup was updated and then compare to now if it is up to five minutes
+  //  if not then throw error
+
+  if (existingUser) {
+    throw new HttpError(409, 'User already signed up, please login', 'EMAIL_EXISTS');
+  }
+
+  const pendingSignup = await prisma.pendingSignup.findFirst({
+    where: {
+      email,
+      status: SignupStatus.PENDING,
+    },
+    select: {
+      email: true,
+      expiresAt: true,
+      fullName: true,
+      companyName: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!pendingSignup) {
+    throw new HttpError(404, 'User not found', 'NOT_FOUND');
+  }
+
+  const signupToken = signASignUpToken(input);
+
+  await prisma.pendingSignup.update({
+    data: { expiresAt },
+    where: {
+      email,
+      status: SignupStatus.PENDING,
+    },
+  });
+
+  await emailQueue.add('verify.email', {
+    email,
+    fullName: pendingSignup.fullName,
+    url: `https://${env.FRONTEND_DOMAIN}/verify-email?token=${signupToken}`,
+    companyName: pendingSignup.companyName,
+  });
+
+  return { message: 'Please check your email for confirmation link', expiresAt: EXPIRY_MINUTES };
 }

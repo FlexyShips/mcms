@@ -1,15 +1,15 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 const reservedSlugs = [
-  "www",
-  "api",
-  "admin",
-  "app",
-  "mail",
-  "mcdms",
-  "ene",
-  "staging",
-  "localhost",
+  'www',
+  'api',
+  'admin',
+  'app',
+  'mail',
+  'mcdms',
+  'ene',
+  'staging',
+  'localhost',
 ];
 
 export const createSignupSchema = z.object({
@@ -23,12 +23,9 @@ export const createSignupSchema = z.object({
     .max(80)
     .regex(
       /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
-      "Slug must be lowercase letters, numbers, and hyphens only",
+      'Slug must be lowercase letters, numbers, and hyphens only',
     )
-    .refine(
-      (s) => !reservedSlugs.includes(s.toLowerCase()),
-      `Slug cannot be reserved`,
-    ),
+    .refine((s) => !reservedSlugs.includes(s.toLowerCase()), `Slug cannot be reserved`),
   planId: z.string().min(1),
 });
 
@@ -37,7 +34,13 @@ export const slugCheckSchema = z.object({
     .string()
     .min(2)
     .max(80)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Invalid slug format"),
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Invalid slug format'),
+});
+export const verifyEmailTokenSchema = z.object({
+  token: z.string().min(1),
+});
+export const resendVerifyEmailTokenSchema = z.object({
+  email: z.string().email(),
 });
 
 export const signupReferenceSchema = z.object({

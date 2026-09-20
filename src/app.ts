@@ -29,6 +29,8 @@ import { pinoHttp } from 'pino-http';
 import { signupRouter } from './modules/signup/signup.routes.js';
 import { webhookRouter } from './modules/webhooks/webhook.routes.js';
 import { planRouter } from './modules/plan/plan.routes.js';
+import { reportRouter } from './modules/report/report.routes.js';
+import { tenantRouter } from './modules/tenant/tenant.routes.js';
 
 export function createApp() {
   const app = express();
@@ -65,6 +67,7 @@ export function createApp() {
   app.use(`${API_PREFIX}/waitlist/admin`, adminWaitlistRouter);
   app.use(resolveTenant);
   app.use(`${API_PREFIX}/auth`, authRouter);
+  app.use(`${API_PREFIX}/tenant`, tenantRouter);
   app.use(`${API_PREFIX}/subscriptions`, subscriptionRouter);
   app.use(`${API_PREFIX}/users`, userRouter);
   app.use(`${API_PREFIX}/vessels`, vesselRouter);
@@ -74,6 +77,7 @@ export function createApp() {
   app.use(`${API_PREFIX}`, certificateRouter);
   app.use(`${API_PREFIX}/renewals`, renewalRouter);
   app.use(`${API_PREFIX}/notifications`, notificationRouter);
+  app.use(`${API_PREFIX}/reports`, reportRouter);
   app.use(`${API_PREFIX}/subscription`, subscriptionRouter);
 
   app.get(`${API_PREFIX}/openapi.json`, (_req, res) => res.json(swaggerDocument));

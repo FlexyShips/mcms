@@ -59,6 +59,10 @@ export const swaggerDocument = {
       description: 'Vessel fleet management',
     },
     {
+      name: 'Reports',
+      description: 'Vessel compliance previews and downloadable report generation',
+    },
+    {
       name: 'Crew',
       description: 'Crew member management and vessel assignment',
     },
@@ -78,6 +82,85 @@ export const swaggerDocument = {
     },
   ],
   paths: {
+    '/reports/vessels/{vesselId}/preview': {
+      get: {
+        summary: 'Preview a vessel compliance report as JSON',
+        tags: ['Reports'],
+        parameters: [
+          { name: 'vesselId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'asOf', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'includeCrew', in: 'query', schema: { type: 'boolean', default: true } },
+          { name: 'includeRenewals', in: 'query', schema: { type: 'boolean', default: true } },
+        ],
+        responses: {
+          '200': { description: 'Vessel compliance report preview' },
+          '403': { description: 'Reporting module disabled or vessel outside user scope' },
+          '404': { description: 'Vessel not found' },
+        },
+      },
+    },
+    '/reports/generate': {
+      post: {
+        summary: 'Queue a downloadable vessel compliance report',
+        tags: ['Reports'],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  type: { type: 'string', enum: ['VESSEL_COMPLIANCE'] },
+                  format: { type: 'string', enum: ['PDF', 'EXCEL', 'CSV'] },
+                  vesselId: { type: 'string' },
+                  asOf: { type: 'string', format: 'date-time' },
+                  includeCrew: { type: 'boolean', default: true },
+                  includeRenewals: { type: 'boolean', default: true },
+                },
+                required: ['type', 'format', 'vesselId'],
+              },
+            },
+          },
+        },
+        responses: { '202': { description: 'Report queued' } },
+      },
+    },
+    '/reports/history': {
+      get: {
+        summary: 'List generated reports for the tenant',
+        tags: ['Reports'],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED'] },
+          },
+        ],
+        responses: { '200': { description: 'Paginated report history' } },
+      },
+    },
+    '/reports/{id}/status': {
+      get: {
+        summary: 'Get report generation status',
+        tags: ['Reports'],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Report metadata and status' } },
+      },
+    },
+    '/reports/{id}/download': {
+      get: {
+        summary: 'Download a completed report',
+        tags: ['Reports'],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Excel or CSV report artifact' },
+          '409': { description: 'Report is not ready' },
+          '410': { description: 'Report artifact has expired' },
+        },
+      },
+    },
     '/health': {
       get: {
         summary: 'Health check',
@@ -867,6 +950,83 @@ export const swaggerDocument = {
         responses: {
           '302': {
             description: 'Redirects to frontend based on signup status',
+          },
+        },
+      },
+    },
+    '/signup/verify-email': {
+      post: {
+        summary: 'Verify signup email and complete registration',
+        tags: ['Signup'],
+        parameters: [
+          {
+            name: 'token',
+            in: 'query',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Signup verified and completed',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    reference: { type: 'string' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Invalid or expired token',
+          },
+          '409': {
+            description: 'Signup already completed',
+          },
+        },
+      },
+    },
+    '/signup/resend-email-token': {
+      post: {
+        summary: 'Resend email verification token',
+        tags: ['Signup'],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  email: { type: 'string', format: 'email' },
+                },
+                required: ['email'],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Verification token resent',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Invalid email format',
+          },
+          '409': {
+            description: 'Signup already verified or email not found',
           },
         },
       },

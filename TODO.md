@@ -13,7 +13,7 @@
 12. Work on vessel expiration notification --done (6/8/2026)
     =================================
     Pending Task
-13. Work on vessel reporting
+13. Work on vessel reporting -- done (18/8/2026)
 14. Work on AI integration for vessel report
 15. Work admin tenant settings
 16. Certification entry

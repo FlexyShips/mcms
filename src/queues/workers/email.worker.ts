@@ -11,6 +11,7 @@ import {
   sendWaitlistLaunchAnnouncement,
   sendVesselCertificateExpiry,
   sendCrewDocumentExpiry,
+  sendEmailVerificationMail,
 } from '../../services/email.service.js';
 import { logJobCompleted, logJobStarted } from '../job-logger.js';
 import { prisma } from '../../lib/prisma.js';
@@ -66,6 +67,17 @@ const worker = new Worker(
       );
 
       result = { sent: true };
+    } else if (job.name === 'verify.email') {
+      await sendEmailVerificationMail(
+        job.data as {
+          email: string;
+          fullName: string;
+          companyName: string;
+          url: string;
+        },
+      );
+
+      result = { sent: true };
     } else if (job.name === 'signup.payment') {
       await sendSignupPayment(
         job.data as {
@@ -73,6 +85,7 @@ const worker = new Worker(
           fullName: string;
           companyName: string;
           checkoutUrl: string;
+          plan: string;
         },
       );
 

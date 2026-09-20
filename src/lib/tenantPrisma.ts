@@ -1,28 +1,23 @@
-import { Prisma } from "../generated/prisma/client.js";
-import { prisma } from "./prisma.js";
+import { Prisma } from '../generated/prisma/client.js';
+import { prisma } from './prisma.js';
 
 const tenantOwnedModels = new Set([
-  "TenantSettings",
-  "User",
-  "Vessel",
-  "Certificate",
-  "Document",
-  "DocumentEmbedding",
-  "CrewMember",
-  "RenewalItem",
-  "NotificationLog",
-  "AiInteraction",
-  "ApiKey",
-  "WebhookEndpoint",
+  'TenantSettings',
+  'User',
+  'Vessel',
+  'Certificate',
+  'Document',
+  'DocumentEmbedding',
+  'CrewMember',
+  'RenewalItem',
+  'NotificationLog',
+  'AiInteraction',
+  'ApiKey',
+  'WebhookEndpoint',
+  'ReportJob',
 ]);
 
-const tenantWriteOperations = new Set([
-  "update",
-  "updateMany",
-  "upsert",
-  "delete",
-  "deleteMany",
-]);
+const tenantWriteOperations = new Set(['update', 'updateMany', 'upsert', 'delete', 'deleteMany']);
 
 function mergeTenantWhere(args: Record<string, unknown>, tenantId: string) {
   return {
@@ -34,10 +29,7 @@ function mergeTenantWhere(args: Record<string, unknown>, tenantId: string) {
   };
 }
 
-function mergeTenantCreateData(
-  args: Record<string, unknown>,
-  tenantId: string,
-) {
+function mergeTenantCreateData(args: Record<string, unknown>, tenantId: string) {
   const data = args.data;
 
   if (Array.isArray(data)) {
@@ -47,7 +39,7 @@ function mergeTenantCreateData(
     };
   }
 
-  if (data && typeof data === "object") {
+  if (data && typeof data === 'object') {
     return {
       ...args,
       data: {
@@ -61,24 +53,24 @@ function mergeTenantCreateData(
 }
 
 function scopeArgs<T>(args: T, operation: string, tenantId: string): T {
-  if (!args || typeof args !== "object") return args;
+  if (!args || typeof args !== 'object') return args;
 
   let scopedArgs = args as Record<string, unknown>;
 
   if (
     tenantWriteOperations.has(operation) ||
-    operation.startsWith("find") ||
-    operation === "count" ||
-    operation === "aggregate"
+    operation.startsWith('find') ||
+    operation === 'count' ||
+    operation === 'aggregate'
   ) {
     scopedArgs = mergeTenantWhere(scopedArgs, tenantId);
   }
 
-  if (operation === "create" || operation === "createMany") {
+  if (operation === 'create' || operation === 'createMany') {
     scopedArgs = mergeTenantCreateData(scopedArgs, tenantId);
   }
 
-  if (operation === "upsert") {
+  if (operation === 'upsert') {
     scopedArgs = {
       ...scopedArgs,
       create: {
@@ -94,7 +86,7 @@ function scopeArgs<T>(args: T, operation: string, tenantId: string): T {
 export function prismaForTenant(tenantId: string) {
   return prisma.$extends(
     Prisma.defineExtension({
-      name: "tenant-scope",
+      name: 'tenant-scope',
       query: {
         $allModels: {
           async $allOperations({ model, operation, args, query }) {

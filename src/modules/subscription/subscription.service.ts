@@ -28,7 +28,7 @@ function periodEndFor(cycle: BillingCycle, from = new Date()): Date {
 export async function getCurrentSubscription(tenantId: string) {
   const subscription = await prisma.subscription.findUnique({
     where: { tenantId },
-    include: { payments: { orderBy: { createdAt: 'desc' }, take: 10 } },
+    include: { payments: { orderBy: { createdAt: 'desc' }, take: 10 }, plan: true },
   });
 
   if (!subscription) {
