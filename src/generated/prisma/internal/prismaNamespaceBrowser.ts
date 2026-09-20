@@ -61,6 +61,7 @@ export const ModelName = {
   Vessel: 'Vessel',
   Certificate: 'Certificate',
   Document: 'Document',
+  ReportJob: 'ReportJob',
   DocumentEmbedding: 'DocumentEmbedding',
   CrewMember: 'CrewMember',
   VesselCrewAssignment: 'VesselCrewAssignment',
@@ -196,6 +197,7 @@ export const PendingSignupScalarFieldEnum = {
   companyName: 'companyName',
   slug: 'slug',
   reference: 'reference',
+  firstPaymentCompleted: 'firstPaymentCompleted',
   planId: 'planId',
   cycle: 'cycle',
   status: 'status',
@@ -306,6 +308,7 @@ export const DocumentScalarFieldEnum = {
   id: 'id',
   tenantId: 'tenantId',
   certificateId: 'certificateId',
+  vesselId: 'vesselId',
   name: 'name',
   fileKey: 'fileKey',
   fileUrl: 'fileUrl',
@@ -319,6 +322,30 @@ export const DocumentScalarFieldEnum = {
 
 export type DocumentScalarFieldEnum =
   (typeof DocumentScalarFieldEnum)[keyof typeof DocumentScalarFieldEnum];
+
+export const ReportJobScalarFieldEnum = {
+  id: 'id',
+  tenantId: 'tenantId',
+  requestedBy: 'requestedBy',
+  type: 'type',
+  format: 'format',
+  status: 'status',
+  filters: 'filters',
+  progress: 'progress',
+  fileName: 'fileName',
+  mimeType: 'mimeType',
+  sizeBytes: 'sizeBytes',
+  fileData: 'fileData',
+  errorMessage: 'errorMessage',
+  startedAt: 'startedAt',
+  completedAt: 'completedAt',
+  expiresAt: 'expiresAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+} as const;
+
+export type ReportJobScalarFieldEnum =
+  (typeof ReportJobScalarFieldEnum)[keyof typeof ReportJobScalarFieldEnum];
 
 export const DocumentEmbeddingScalarFieldEnum = {
   id: 'id',

@@ -5,6 +5,7 @@ import './workers/notification.worker.js';
 import './workers/email.worker.js';
 import './workers/tenant.expiration.worker.js';
 import './workers/cleanup.worker.js';
+import './workers/report.worker.js';
 
 let hasStarted = false;
 
@@ -30,6 +31,8 @@ export async function startNotificationWorker(): Promise<void> {
     {},
     {
       repeat: { pattern: '0 6 * * *' },
+      // repeat: { pattern: '10 3 * * *' },
+
       jobId: 'daily-notification-scan',
       removeOnComplete: { count: 10 },
       removeOnFail: { count: 20 },
@@ -53,6 +56,17 @@ export async function startNotificationWorker(): Promise<void> {
     {
       repeat: { pattern: '0 6 * * *' },
       jobId: 'daily-cleanup-pending-signups',
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 20 },
+    },
+  );
+
+  await cleanupQueue.add(
+    'cleanup-expired-reports',
+    {},
+    {
+      repeat: { pattern: '30 6 * * *' },
+      jobId: 'daily-cleanup-expired-reports',
       removeOnComplete: { count: 10 },
       removeOnFail: { count: 20 },
     },

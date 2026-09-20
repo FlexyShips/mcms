@@ -12,6 +12,7 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32).optional().or(z.literal('')),
   JWT_REFRESH_SECRET: z.string().min(32).optional().or(z.literal('')),
   JWT_ACCESS_TTL: z.string().default('15m'),
+  JWT_EMAIL_VERIFICATION_TTL: z.string().default('5m'),
   JWT_REFRESH_TTL: z.string().default('7d'),
 
   S3_BUCKET: z.string().optional().or(z.literal('')),
@@ -48,6 +49,9 @@ const envSchema = z.object({
 
   APP_URL: z.string().url().default('http://localhost:3000'),
   ADMIN_URL: z.string().url().default('http://localhost:3000/admin'),
+  APP_NAME: z.string().default('FlexyShips'),
+  FRONTEND_DOMAIN: z.string().default('localhost:3002'),
+  BACKEND_URL: z.string().default('localhost:3000'),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -1,12 +1,12 @@
-import { prisma } from "../../lib/prisma.js";
-import { HttpError } from "../../utils/httpError.js";
+import { prisma } from '../../lib/prisma.js';
+import { HttpError } from '../../utils/httpError.js';
 
 function canManageCertificates(role: string) {
-  return ["ADMIN", "FLEET_MANAGER", "HR_MANAGER"].includes(role);
+  return ['ADMIN', 'FLEET_MANAGER', 'HR_MANAGER'].includes(role);
 }
 
 function certificateScopeWhere(tenantId: string, role: string, userId: string) {
-  if (role === "MARINE_SUPERINTENDENT") {
+  if (role === 'MARINE_SUPERINTENDENT') {
     return {
       tenantId,
       vessel: {
@@ -29,7 +29,7 @@ export async function listVesselCertificates(input: {
       ...certificateScopeWhere(input.tenantId, input.userRole, input.userId),
       vesselId: input.vesselId,
     },
-    orderBy: { expiresAt: "asc" },
+    orderBy: { expiresAt: 'asc' },
   });
 }
 
@@ -49,7 +49,7 @@ export async function getVesselCertificate(input: {
   });
 
   if (!certificate) {
-    throw new HttpError(404, "Certificate not found", "CERTIFICATE_NOT_FOUND");
+    throw new HttpError(404, 'Certificate not found', 'CERTIFICATE_NOT_FOUND');
   }
 
   return certificate;
@@ -71,11 +71,7 @@ export async function createVesselCertificate(input: {
   };
 }) {
   if (!canManageCertificates(input.userRole)) {
-    throw new HttpError(
-      403,
-      "You do not have access to manage certificates",
-      "FORBIDDEN",
-    );
+    throw new HttpError(403, 'You do not have access to manage certificates', 'FORBIDDEN');
   }
 
   const vessel = await prisma.vessel.findFirst({
@@ -84,7 +80,7 @@ export async function createVesselCertificate(input: {
   });
 
   if (!vessel) {
-    throw new HttpError(404, "Vessel not found", "VESSEL_NOT_FOUND");
+    throw new HttpError(404, 'Vessel not found', 'VESSEL_NOT_FOUND');
   }
 
   return prisma.certificate.create({
@@ -97,7 +93,7 @@ export async function createVesselCertificate(input: {
       issuedAt: input.data.issuedAt,
       expiresAt: input.data.expiresAt,
       notes: input.data.notes,
-      status: (input.data.status as never) ?? "VALID",
+      status: (input.data.status as never) ?? 'VALID',
     },
   });
 }
@@ -111,11 +107,7 @@ export async function updateVesselCertificate(input: {
   data: Record<string, unknown>;
 }) {
   if (!canManageCertificates(input.userRole)) {
-    throw new HttpError(
-      403,
-      "You do not have access to manage certificates",
-      "FORBIDDEN",
-    );
+    throw new HttpError(403, 'You do not have access to manage certificates', 'FORBIDDEN');
   }
 
   await getVesselCertificate({
@@ -140,11 +132,7 @@ export async function deleteVesselCertificate(input: {
   userId: string;
 }) {
   if (!canManageCertificates(input.userRole)) {
-    throw new HttpError(
-      403,
-      "You do not have access to manage certificates",
-      "FORBIDDEN",
-    );
+    throw new HttpError(403, 'You do not have access to manage certificates', 'FORBIDDEN');
   }
 
   await getVesselCertificate({
@@ -170,11 +158,7 @@ export async function uploadVesselCertificateFile(input: {
   sizeBytes?: number;
 }) {
   if (!canManageCertificates(input.userRole)) {
-    throw new HttpError(
-      403,
-      "You do not have access to manage certificates",
-      "FORBIDDEN",
-    );
+    throw new HttpError(403, 'You do not have access to manage certificates', 'FORBIDDEN');
   }
 
   await getVesselCertificate({
@@ -185,15 +169,36 @@ export async function uploadVesselCertificateFile(input: {
     userId: input.userId,
   });
 
-  return prisma.certificate.update({
-    where: { id: input.certificateId },
-    data: {
-      fileUrl: input.fileUrl,
-      fileKey: input.fileKey,
-      ...(input.mimeType ? { notes: input.mimeType } : {}),
-      ...(input.sizeBytes
-        ? { notes: `${input.mimeType ?? ""}:${input.sizeBytes}` }
-        : {}),
-    },
+  return prisma.$transaction(async (tx) => {
+    const existingDocument = await tx.document.findFirst({
+      where: {
+        tenantId: input.tenantId,
+        certificateId: input.certificateId,
+        fileKey: input.fileKey,
+      },
+      select: { id: true },
+    });
+
+    if (!existingDocument) {
+      await tx.document.create({
+        data: {
+          tenantId: input.tenantId,
+          vesselId: input.vesselId,
+          certificateId: input.certificateId,
+          name: input.fileKey.split('/').pop() ?? 'certificate-file',
+          fileUrl: input.fileUrl,
+          fileKey: input.fileKey,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes,
+          uploadedBy: input.userId,
+        },
+      });
+    }
+
+    return tx.certificate.update({
+      where: { id: input.certificateId },
+      data: { fileUrl: input.fileUrl, fileKey: input.fileKey },
+      include: { documents: true },
+    });
   });
 }

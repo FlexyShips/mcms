@@ -1,16 +1,12 @@
-import bcrypt from "bcryptjs";
-import { randomUUID } from "node:crypto";
-import { prisma } from "../../lib/prisma.js";
-import { durationToDate } from "../../utils/duration.js";
-import { HttpError } from "../../utils/httpError.js";
-import { hashToken } from "../../utils/tokenHash.js";
-import { env } from "../../config/env.js";
-import {
-  signAccessToken,
-  signRefreshToken,
-  verifyRefreshToken,
-} from "./jwt.service.js";
-import type { AuthTokens } from "./auth.types.js";
+import bcrypt from 'bcryptjs';
+import { randomUUID } from 'node:crypto';
+import { prisma } from '../../lib/prisma.js';
+import { durationToDate } from '../../utils/duration.js';
+import { HttpError } from '../../utils/httpError.js';
+import { hashToken } from '../../utils/tokenHash.js';
+import { env } from '../../config/env.js';
+import { signAccessToken, signRefreshToken, verifyRefreshToken } from './jwt.service.js';
+import type { AuthTokens } from './auth.types.js';
 
 type LoginInput = {
   tenantSlug?: string;
@@ -26,7 +22,7 @@ function normalizeEmail(email: string): string {
 export async function createTokenPair(user: {
   id: string;
   tenantId: string;
-  role: import("../../generated/prisma/client.js").UserRole;
+  role: import('../../generated/prisma/client.js').UserRole;
   isOwner: boolean;
 }): Promise<AuthTokens> {
   const tokenRecord = await prisma.refreshToken.create({
@@ -64,8 +60,8 @@ export async function login(input: LoginInput): Promise<AuthTokens> {
   if (!input.tenantId && !input.tenantSlug) {
     throw new HttpError(
       400,
-      "Tenant slug or tenant context is required for login",
-      "TENANT_REQUIRED",
+      'Tenant slug or tenant context is required for login',
+      'TENANT_REQUIRED',
     );
   }
 
@@ -78,34 +74,25 @@ export async function login(input: LoginInput): Promise<AuthTokens> {
     include: { tenant: true },
   });
 
+  console.log('this is the user: ', user);
+
   if (!user || !user.isActive) {
-    throw new HttpError(
-      401,
-      "Invalid email or password",
-      "INVALID_CREDENTIALS",
-    );
+    throw new HttpError(401, 'Invalid email or password', 'INVALID_CREDENTIALS');
   }
 
-  if (!["TRIAL", "ACTIVE"].includes(user.tenant.status)) {
-    throw new HttpError(
-      403,
-      "Tenant account is not active",
-      "TENANT_NOT_ACTIVE",
-    );
+  console.log('it het here ');
+
+  if (!['TRIAL', 'ACTIVE'].includes(user.tenant.status)) {
+    throw new HttpError(403, 'Tenant account is not active', 'TENANT_NOT_ACTIVE');
   }
 
-  const passwordMatches = await bcrypt.compare(
-    input.password,
-    user.passwordHash,
-  );
+  const passwordMatches = await bcrypt.compare(input.password, user.passwordHash);
 
   if (!passwordMatches) {
-    throw new HttpError(
-      401,
-      "Invalid email or password",
-      "INVALID_CREDENTIALS",
-    );
+    throw new HttpError(401, 'Invalid email or password', 'INVALID_CREDENTIALS');
   }
+
+  console.log('next is the hashpassword: ', passwordMatches);
 
   await prisma.user.update({
     where: { id: user.id },
@@ -134,18 +121,11 @@ export async function refresh(refreshToken: string): Promise<AuthTokens> {
     storedToken.revokedAt ||
     storedToken.expiresAt <= new Date()
   ) {
-    throw new HttpError(
-      401,
-      "Refresh token has been revoked or expired",
-      "REFRESH_TOKEN_REVOKED",
-    );
+    throw new HttpError(401, 'Refresh token has been revoked or expired', 'REFRESH_TOKEN_REVOKED');
   }
 
-  if (
-    !storedToken.user.isActive ||
-    !["TRIAL", "ACTIVE"].includes(storedToken.user.tenant.status)
-  ) {
-    throw new HttpError(403, "Account is not active", "ACCOUNT_NOT_ACTIVE");
+  if (!storedToken.user.isActive || !['TRIAL', 'ACTIVE'].includes(storedToken.user.tenant.status)) {
+    throw new HttpError(403, 'Account is not active', 'ACCOUNT_NOT_ACTIVE');
   }
 
   await prisma.refreshToken.update({
