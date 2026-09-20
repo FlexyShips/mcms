@@ -387,6 +387,7 @@ export const ModelName = {
   Vessel: 'Vessel',
   Certificate: 'Certificate',
   Document: 'Document',
+  ReportJob: 'ReportJob',
   DocumentEmbedding: 'DocumentEmbedding',
   CrewMember: 'CrewMember',
   VesselCrewAssignment: 'VesselCrewAssignment',
@@ -434,6 +435,7 @@ export type TypeMap<
       | 'vessel'
       | 'certificate'
       | 'document'
+      | 'reportJob'
       | 'documentEmbedding'
       | 'crewMember'
       | 'vesselCrewAssignment'
@@ -1413,6 +1415,80 @@ export type TypeMap<
         count: {
           args: Prisma.DocumentCountArgs<ExtArgs>;
           result: runtime.Types.Utils.Optional<Prisma.DocumentCountAggregateOutputType> | number;
+        };
+      };
+    };
+    ReportJob: {
+      payload: Prisma.$ReportJobPayload<ExtArgs>;
+      fields: Prisma.ReportJobFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.ReportJobFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.ReportJobFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>;
+        };
+        findFirst: {
+          args: Prisma.ReportJobFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.ReportJobFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>;
+        };
+        findMany: {
+          args: Prisma.ReportJobFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>[];
+        };
+        create: {
+          args: Prisma.ReportJobCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>;
+        };
+        createMany: {
+          args: Prisma.ReportJobCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.ReportJobCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>[];
+        };
+        delete: {
+          args: Prisma.ReportJobDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>;
+        };
+        update: {
+          args: Prisma.ReportJobUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>;
+        };
+        deleteMany: {
+          args: Prisma.ReportJobDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.ReportJobUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.ReportJobUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>[];
+        };
+        upsert: {
+          args: Prisma.ReportJobUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>;
+        };
+        aggregate: {
+          args: Prisma.ReportJobAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateReportJob>;
+        };
+        groupBy: {
+          args: Prisma.ReportJobGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.ReportJobGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.ReportJobCountArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.ReportJobCountAggregateOutputType> | number;
         };
       };
     };
@@ -2606,6 +2682,7 @@ export const PendingSignupScalarFieldEnum = {
   companyName: 'companyName',
   slug: 'slug',
   reference: 'reference',
+  firstPaymentCompleted: 'firstPaymentCompleted',
   planId: 'planId',
   cycle: 'cycle',
   status: 'status',
@@ -2716,6 +2793,7 @@ export const DocumentScalarFieldEnum = {
   id: 'id',
   tenantId: 'tenantId',
   certificateId: 'certificateId',
+  vesselId: 'vesselId',
   name: 'name',
   fileKey: 'fileKey',
   fileUrl: 'fileUrl',
@@ -2729,6 +2807,30 @@ export const DocumentScalarFieldEnum = {
 
 export type DocumentScalarFieldEnum =
   (typeof DocumentScalarFieldEnum)[keyof typeof DocumentScalarFieldEnum];
+
+export const ReportJobScalarFieldEnum = {
+  id: 'id',
+  tenantId: 'tenantId',
+  requestedBy: 'requestedBy',
+  type: 'type',
+  format: 'format',
+  status: 'status',
+  filters: 'filters',
+  progress: 'progress',
+  fileName: 'fileName',
+  mimeType: 'mimeType',
+  sizeBytes: 'sizeBytes',
+  fileData: 'fileData',
+  errorMessage: 'errorMessage',
+  startedAt: 'startedAt',
+  completedAt: 'completedAt',
+  expiresAt: 'expiresAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+} as const;
+
+export type ReportJobScalarFieldEnum =
+  (typeof ReportJobScalarFieldEnum)[keyof typeof ReportJobScalarFieldEnum];
 
 export const DocumentEmbeddingScalarFieldEnum = {
   id: 'id',
@@ -3302,6 +3404,64 @@ export type ListEnumCertStatusFieldRefInput<$PrismaModel> = FieldRefInputType<
 >;
 
 /**
+ * Reference to a field of type 'ReportType'
+ */
+export type EnumReportTypeFieldRefInput<$PrismaModel> = FieldRefInputType<
+  $PrismaModel,
+  'ReportType'
+>;
+
+/**
+ * Reference to a field of type 'ReportType[]'
+ */
+export type ListEnumReportTypeFieldRefInput<$PrismaModel> = FieldRefInputType<
+  $PrismaModel,
+  'ReportType[]'
+>;
+
+/**
+ * Reference to a field of type 'ReportFormat'
+ */
+export type EnumReportFormatFieldRefInput<$PrismaModel> = FieldRefInputType<
+  $PrismaModel,
+  'ReportFormat'
+>;
+
+/**
+ * Reference to a field of type 'ReportFormat[]'
+ */
+export type ListEnumReportFormatFieldRefInput<$PrismaModel> = FieldRefInputType<
+  $PrismaModel,
+  'ReportFormat[]'
+>;
+
+/**
+ * Reference to a field of type 'ReportStatus'
+ */
+export type EnumReportStatusFieldRefInput<$PrismaModel> = FieldRefInputType<
+  $PrismaModel,
+  'ReportStatus'
+>;
+
+/**
+ * Reference to a field of type 'ReportStatus[]'
+ */
+export type ListEnumReportStatusFieldRefInput<$PrismaModel> = FieldRefInputType<
+  $PrismaModel,
+  'ReportStatus[]'
+>;
+
+/**
+ * Reference to a field of type 'Bytes'
+ */
+export type BytesFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Bytes'>;
+
+/**
+ * Reference to a field of type 'Bytes[]'
+ */
+export type ListBytesFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Bytes[]'>;
+
+/**
  * Reference to a field of type 'RenewalStage'
  */
 export type EnumRenewalStageFieldRefInput<$PrismaModel> = FieldRefInputType<
@@ -3506,6 +3666,7 @@ export type GlobalOmitConfig = {
   vessel?: Prisma.VesselOmit;
   certificate?: Prisma.CertificateOmit;
   document?: Prisma.DocumentOmit;
+  reportJob?: Prisma.ReportJobOmit;
   documentEmbedding?: Prisma.DocumentEmbeddingOmit;
   crewMember?: Prisma.CrewMemberOmit;
   vesselCrewAssignment?: Prisma.VesselCrewAssignmentOmit;

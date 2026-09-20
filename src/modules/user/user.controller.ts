@@ -15,7 +15,7 @@ export async function invite(req: Request, res: Response) {
     firstName: req.body.firstName,
     lastName: req.body.lastName,
     role: req.body.role,
-    ip: req.ip
+    ip: req.ip,
   });
 
   res.status(201).json(result);
@@ -32,7 +32,7 @@ export async function updateRole(req: Request, res: Response) {
     actorUserId: req.user!.id,
     targetUserId: req.params.id,
     role: req.body.role,
-    ip: req.ip
+    ip: req.ip,
   });
 
   res.json({ user });
@@ -43,7 +43,7 @@ export async function deactivate(req: Request, res: Response) {
     tenantId: requireTenantId(req.tenantId),
     actorUserId: req.user!.id,
     targetUserId: req.params.id,
-    ip: req.ip
+    ip: req.ip,
   });
 
   res.json({ user });
@@ -54,7 +54,7 @@ export async function reactivate(req: Request, res: Response) {
     tenantId: requireTenantId(req.tenantId),
     actorUserId: req.user!.id,
     targetUserId: req.params.id,
-    ip: req.ip
+    ip: req.ip,
   });
 
   res.json({ user });
@@ -66,7 +66,7 @@ export async function resetPassword(req: Request, res: Response) {
     actorUserId: req.user!.id,
     targetUserId: req.params.id,
     password: req.body.password,
-    ip: req.ip
+    ip: req.ip,
   });
 
   res.json({ user });

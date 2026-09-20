@@ -44,7 +44,6 @@ export async function paystackWebhook(req: Request, res: Response) {
           customer_code: string;
         }
       | undefined;
-    console.log('Customer data:', customer); // Debugging line
 
     if (metadata?.signupReference) {
       const pendingSignup = await prisma.pendingSignup.findUnique({
@@ -53,7 +52,7 @@ export async function paystackWebhook(req: Request, res: Response) {
 
       // this is where you will need to make sure you get the tenant
       try {
-        if (pendingSignup?.status !== SignupStatus.AWAITING_PAYMENT) {
+        if (pendingSignup?.firstPaymentCompleted) {
           await renewSubscription({
             tenantId: pendingSignup?.tenantId!,
             paymentReference: data.reference,

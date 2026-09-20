@@ -1,10 +1,13 @@
-import bcrypt from "bcryptjs";
-import { randomBytes } from "node:crypto";
-import { prisma } from "../../lib/prisma.js";
-import { redis } from "../../lib/redis.js";
-import { logTenantAudit } from "../../lib/audit.js";
-import { HttpError } from "../../utils/httpError.js";
-import { UserRole } from "../../generated/prisma/enums.js";
+import bcrypt from 'bcryptjs';
+import { randomBytes } from 'node:crypto';
+import { prisma } from '../../lib/prisma.js';
+import { redis } from '../../lib/redis.js';
+import { logTenantAudit } from '../../lib/audit.js';
+import { HttpError } from '../../utils/httpError.js';
+import { UserRole } from '../../generated/prisma/enums.js';
+import { emailQueue } from '../../queues/queue.js';
+import { env } from '../../config/env.js';
+import { createCrew } from '../crew/crew.service.js';
 
 const USER_INVITE_TTL_SECONDS = 48 * 60 * 60;
 
@@ -13,14 +16,14 @@ function normalizeEmail(email: string): string {
 }
 
 function makeInviteToken(): string {
-  return randomBytes(32).toString("base64url");
+  return randomBytes(32).toString('base64url');
 }
 
 async function countActiveAdmins(tenantId: string): Promise<number> {
   return prisma.user.count({
     where: {
       tenantId,
-      role: "ADMIN",
+      role: 'ADMIN',
       isActive: true,
     },
   });
@@ -32,7 +35,7 @@ async function getTenantUserOrThrow(tenantId: string, userId: string) {
   });
 
   if (!user) {
-    throw new HttpError(404, "User not found", "USER_NOT_FOUND");
+    throw new HttpError(404, 'User not found', 'USER_NOT_FOUND');
   }
 
   return user;
@@ -41,7 +44,7 @@ async function getTenantUserOrThrow(tenantId: string, userId: string) {
 export async function listUsers(tenantId: string) {
   return prisma.user.findMany({
     where: { tenantId },
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: 'desc' },
     select: {
       id: true,
       email: true,
@@ -67,6 +70,15 @@ export async function inviteUser(input: {
   ip?: string;
 }) {
   const email = normalizeEmail(input.email);
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: input.tenantId },
+    select: { name: true },
+  });
+
+  if (!tenant) {
+    throw new HttpError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
+  }
+
   const existing = await prisma.user.findFirst({
     where: { tenantId: input.tenantId, email },
   });
@@ -74,12 +86,12 @@ export async function inviteUser(input: {
   if (existing?.isActive) {
     throw new HttpError(
       409,
-      "An active user with this email already exists",
-      "USER_ALREADY_EXISTS",
+      'An active user with this email already exists',
+      'USER_ALREADY_EXISTS',
     );
   }
 
-  const passwordHash = await bcrypt.hash(randomBytes(32).toString("hex"), 12);
+  const passwordHash = await bcrypt.hash(randomBytes(32).toString('hex'), 12);
 
   const user = existing
     ? await prisma.user.update({
@@ -91,6 +103,7 @@ export async function inviteUser(input: {
           passwordHash,
           isActive: false,
         },
+        omit: { passwordHash: true },
       })
     : await prisma.user.create({
         data: {
@@ -102,6 +115,7 @@ export async function inviteUser(input: {
           passwordHash,
           isActive: false,
         },
+        omit: { passwordHash: true },
       });
 
   const token = makeInviteToken();
@@ -113,23 +127,43 @@ export async function inviteUser(input: {
       userId: user.id,
       email: user.email,
     }),
-    "EX",
+    'EX',
     USER_INVITE_TTL_SECONDS,
   );
 
   await logTenantAudit({
     tenantId: input.tenantId,
     userId: input.actorUserId,
-    action: "INVITE_USER",
-    entity: "User",
+    action: 'INVITE_USER',
+    entity: 'User',
     entityId: user.id,
     after: { email: user.email, role: user.role },
     ip: input.ip,
   });
 
+  const inviteUrl = new URL('/accept-invite', env.APP_URL);
+  inviteUrl.searchParams.set('token', token);
+
+  await emailQueue.add(
+    'user.invite',
+    {
+      email: user.email,
+      firstName: user.firstName,
+      companyName: tenant.name,
+      role: user.role,
+      inviteUrl: inviteUrl.toString(),
+    },
+    {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5_000 },
+      removeOnComplete: { count: 100 },
+      removeOnFail: { count: 100 },
+    },
+  );
+
   return {
     user,
-    token,
+    token: '',
     expiresInSeconds: USER_INVITE_TTL_SECONDS,
   };
 }
@@ -138,11 +172,7 @@ export async function acceptInvite(input: { token: string; password: string }) {
   const raw = await redis.get(`user:invite:${input.token}`);
 
   if (!raw) {
-    throw new HttpError(
-      401,
-      "Invite token is invalid or expired",
-      "INVALID_INVITE_TOKEN",
-    );
+    throw new HttpError(401, 'Invite token is invalid or expired', 'INVALID_INVITE_TOKEN');
   }
 
   const payload = JSON.parse(raw) as {
@@ -158,6 +188,7 @@ export async function acceptInvite(input: { token: string; password: string }) {
       passwordHash,
       isActive: true,
     },
+    omit: { passwordHash: true },
   });
 
   await redis.del(`user:invite:${input.token}`);
@@ -173,31 +204,23 @@ export async function updateUserRole(input: {
   ip?: string;
 }) {
   if (input.actorUserId === input.targetUserId) {
-    throw new HttpError(
-      400,
-      "An admin cannot change their own role",
-      "SELF_ROLE_CHANGE_DENIED",
-    );
+    throw new HttpError(400, 'An admin cannot change their own role', 'SELF_ROLE_CHANGE_DENIED');
   }
 
   const target = await getTenantUserOrThrow(input.tenantId, input.targetUserId);
 
-  if (target.isOwner && target.role === "ADMIN" && input.role !== "ADMIN") {
+  if (target.isOwner && target.role === 'ADMIN' && input.role !== 'ADMIN') {
     throw new HttpError(
       403,
-      "The founding owner admin cannot be demoted by tenant admins",
-      "OWNER_DEMOTION_DENIED",
+      'The founding owner admin cannot be demoted by tenant admins',
+      'OWNER_DEMOTION_DENIED',
     );
   }
 
-  if (target.role === "ADMIN" && input.role !== "ADMIN") {
+  if (target.role === 'ADMIN' && input.role !== 'ADMIN') {
     const adminCount = await countActiveAdmins(input.tenantId);
     if (adminCount <= 1) {
-      throw new HttpError(
-        400,
-        "Cannot demote the only active Admin",
-        "LAST_ADMIN_REQUIRED",
-      );
+      throw new HttpError(400, 'Cannot demote the only active Admin', 'LAST_ADMIN_REQUIRED');
     }
   }
 
@@ -209,8 +232,8 @@ export async function updateUserRole(input: {
   await logTenantAudit({
     tenantId: input.tenantId,
     userId: input.actorUserId,
-    action: "UPDATE_USER_ROLE",
-    entity: "User",
+    action: 'UPDATE_USER_ROLE',
+    entity: 'User',
     entityId: updated.id,
     before: { role: target.role },
     after: { role: updated.role },
@@ -227,11 +250,7 @@ export async function deactivateUser(input: {
   ip?: string;
 }) {
   if (input.actorUserId === input.targetUserId) {
-    throw new HttpError(
-      400,
-      "An admin cannot deactivate themselves",
-      "SELF_DEACTIVATION_DENIED",
-    );
+    throw new HttpError(400, 'An admin cannot deactivate themselves', 'SELF_DEACTIVATION_DENIED');
   }
 
   const target = await getTenantUserOrThrow(input.tenantId, input.targetUserId);
@@ -239,19 +258,15 @@ export async function deactivateUser(input: {
   if (target.isOwner) {
     throw new HttpError(
       403,
-      "The founding owner admin cannot be deactivated by tenant admins",
-      "OWNER_DEACTIVATION_DENIED",
+      'The founding owner admin cannot be deactivated by tenant admins',
+      'OWNER_DEACTIVATION_DENIED',
     );
   }
 
-  if (target.role === "ADMIN") {
+  if (target.role === 'ADMIN') {
     const adminCount = await countActiveAdmins(input.tenantId);
     if (adminCount <= 1) {
-      throw new HttpError(
-        400,
-        "Cannot deactivate the only active Admin",
-        "LAST_ADMIN_REQUIRED",
-      );
+      throw new HttpError(400, 'Cannot deactivate the only active Admin', 'LAST_ADMIN_REQUIRED');
     }
   }
 
@@ -263,8 +278,8 @@ export async function deactivateUser(input: {
   await logTenantAudit({
     tenantId: input.tenantId,
     userId: input.actorUserId,
-    action: "DEACTIVATE_USER",
-    entity: "User",
+    action: 'DEACTIVATE_USER',
+    entity: 'User',
     entityId: updated.id,
     before: { isActive: target.isActive },
     after: { isActive: updated.isActive },
@@ -289,8 +304,8 @@ export async function reactivateUser(input: {
   await logTenantAudit({
     tenantId: input.tenantId,
     userId: input.actorUserId,
-    action: "REACTIVATE_USER",
-    entity: "User",
+    action: 'REACTIVATE_USER',
+    entity: 'User',
     entityId: updated.id,
     before: { isActive: target.isActive },
     after: { isActive: updated.isActive },
@@ -326,8 +341,8 @@ export async function resetUserPassword(input: {
   await logTenantAudit({
     tenantId: input.tenantId,
     userId: input.actorUserId,
-    action: "RESET_USER_PASSWORD",
-    entity: "User",
+    action: 'RESET_USER_PASSWORD',
+    entity: 'User',
     entityId: updated.id,
     ip: input.ip,
   });

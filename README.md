@@ -86,6 +86,21 @@ Authenticated requests use:
 Authorization: Bearer <accessToken>
 ```
 
+## Vessel Compliance Reports
+
+Reporting requires the tenant reporting module and the `reports:read` permission.
+
+```text
+GET  /api/v1/reports/vessels/:vesselId/preview
+POST /api/v1/reports/generate
+GET  /api/v1/reports/history
+GET  /api/v1/reports/:id/status
+GET  /api/v1/reports/:id/download
+```
+
+Downloadable reports are generated asynchronously in PDF, Excel, or CSV format. Generated
+artifacts expire after 30 days.
+
 ## Phase 3 Entry Flow
 
 Public waitlist:
